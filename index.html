@@ -1,0 +1,194 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Icon Pools Team</title>
+<meta name="theme-color" content="#15637E">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="default">
+<meta name="apple-mobile-web-app-title" content="Icon Pools">
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="icon" type="image/png" sizes="192x192" href="icons/icon-192.png">
+<link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Barlow:wght@400;500;600;700&family=Barlow+Condensed:wght@600;700&display=swap" rel="stylesheet">
+<style>
+:root{
+  --paper:#EFF2F4; --surface:#FFFFFF; --sunk:#F7F9FA;
+  --ink:#141C22; --slate:#57666F; --faint:#8C9AA3;
+  --rule:#D4DCE1; --rule2:#E6ECEF;
+  --water:#15637E; --dig:#8A6432; --oxide:#993030; --moss:#2C6B4C;
+  --warnbg:#FBF0DC; --errbg:#FAE3E3; --okbg:#DFF0E6;
+  --radius:6px;
+  color-scheme:light dark;
+}
+@media (prefers-color-scheme: dark){
+  :root{
+    --paper:#0D1319; --surface:#161F27; --sunk:#111922;
+    --ink:#E4EBF0; --slate:#9AAAB4; --faint:#6C7C87;
+    --rule:#28343E; --rule2:#1E2831;
+    --water:#4FA8C7; --dig:#C89B5C; --oxide:#D9756F; --moss:#6BB68F;
+    --warnbg:#2E2617; --errbg:#331C1C; --okbg:#16291F;
+  }
+}
+*,*::before,*::after{box-sizing:border-box}
+html,body{margin:0; min-height:100%; background:var(--paper); color:var(--ink)}
+body{
+  font-family:"Barlow",-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;
+  font-size:16px; line-height:1.45; -webkit-font-smoothing:antialiased;
+  -webkit-tap-highlight-color:transparent;
+  padding-bottom:env(safe-area-inset-bottom,0px);
+}
+button,input,select{font:inherit; color:inherit}
+button{cursor:pointer}
+[hidden]{display:none!important}
+.cond{font-family:"Barlow Condensed","Barlow",sans-serif}
+
+/* ---------- chrome ---------- */
+.topbar{position:sticky; top:0; z-index:40}
+header.bar{
+  background:var(--surface); border-bottom:1px solid var(--rule);
+  padding:calc(env(safe-area-inset-top,0px) + 10px) 16px 10px;
+  display:flex; align-items:center; gap:12px;
+}
+.brand{font-weight:700; font-size:17px; letter-spacing:-.01em; white-space:nowrap}
+.brand span{color:var(--slate); font-weight:500}
+.grow{flex:1 1 auto}
+.who{font-size:14px; color:var(--slate); white-space:nowrap; overflow:hidden; text-overflow:ellipsis}
+nav.tabs{display:flex; gap:2px; padding:0 8px; background:var(--surface);
+  border-bottom:1px solid var(--rule)}
+nav.tabs button{border:0; background:none; padding:11px 16px; font-weight:600; font-size:15px;
+  color:var(--slate); border-bottom:2px solid transparent}
+nav.tabs button[aria-selected="true"]{color:var(--ink); border-bottom-color:var(--water)}
+main{padding:16px; max-width:720px; margin:0 auto}
+h2{font-size:20px; margin:0 0 4px; letter-spacing:-.01em}
+.sub{color:var(--slate); font-size:14.5px; margin:0 0 16px}
+:focus-visible{outline:2px solid var(--water); outline-offset:2px}
+
+/* ---------- buttons ---------- */
+.btn{border:1px solid var(--rule); background:var(--surface); color:var(--ink);
+  padding:10px 16px; border-radius:var(--radius); font-weight:600; font-size:15px;
+  min-height:44px}
+.btn.primary{background:#15637E; border-color:#15637E; color:#fff}
+.btn.danger{color:var(--oxide); border-color:var(--oxide); background:transparent}
+.btn.ghost{border-color:transparent; background:transparent; color:var(--slate)}
+.btn.sm{padding:6px 12px; min-height:36px; font-size:14px}
+.btn.block{width:100%}
+.btn:disabled{opacity:.45; cursor:default}
+.row{display:flex; gap:8px; flex-wrap:wrap; align-items:center}
+
+/* ---------- cards, pills, notices ---------- */
+.card{background:var(--surface); border:1px solid var(--rule); border-radius:var(--radius);
+  padding:16px; margin-bottom:14px}
+.card h3{margin:0 0 8px; font-size:16px}
+.pill{display:inline-block; padding:2px 9px; border-radius:10px; font-size:12.5px;
+  font-weight:600; white-space:nowrap; background:var(--rule2); color:var(--slate)}
+.pill.ok{background:var(--okbg); color:var(--moss)}
+.pill.warn{background:var(--warnbg); color:var(--dig)}
+.pill.bad{background:var(--errbg); color:var(--oxide)}
+.pill.role{background:var(--sunk); border:1px solid var(--rule); color:var(--ink); font-weight:500}
+.notice{border-radius:var(--radius); padding:10px 12px; font-size:14.5px; margin:0 0 14px;
+  background:var(--sunk); border:1px solid var(--rule); border-left:3px solid var(--water)}
+.notice.err{background:var(--errbg); border-color:var(--oxide); color:var(--oxide)}
+.notice.warn{background:var(--warnbg); border-color:var(--dig)}
+.muted{color:var(--slate)}
+.small{font-size:13.5px}
+
+/* ---------- name list ---------- */
+.names{list-style:none; margin:0; padding:0; background:var(--surface);
+  border:1px solid var(--rule); border-radius:var(--radius); overflow:hidden}
+.names li + li{border-top:1px solid var(--rule2)}
+.names button{display:flex; align-items:center; gap:12px; width:100%; text-align:left;
+  border:0; background:none; padding:12px 16px; min-height:60px}
+.names button:active{background:var(--sunk)}
+.avatar{flex:none; width:40px; height:40px; border-radius:50%; background:#15637E;
+  color:#fff; display:grid; place-items:center; font-weight:700; font-size:15px}
+.names .nm{font-weight:600; font-size:16.5px; display:block}
+.names .tt{font-size:13.5px; color:var(--slate); display:block}
+.names .chev{margin-left:auto; color:var(--faint); font-size:20px}
+
+/* ---------- PIN pad ---------- */
+.pinwrap{max-width:340px; margin:0 auto; text-align:center}
+.pinwrap .avatar{width:64px; height:64px; font-size:22px; margin:6px auto 10px}
+.pinwrap h2{margin-bottom:2px}
+.dots{display:flex; justify-content:center; gap:14px; margin:22px 0 10px}
+.dots i{width:16px; height:16px; border-radius:50%; border:2px solid var(--slate)}
+.dots i.on{background:var(--ink); border-color:var(--ink)}
+.dots.shake{animation:shake .35s}
+@keyframes shake{25%{transform:translateX(-8px)}50%{transform:translateX(8px)}75%{transform:translateX(-4px)}}
+.pinmsg{min-height:44px; font-size:14.5px; font-weight:600; color:var(--slate)}
+.pinmsg.err{color:var(--oxide)}
+.pad{display:grid; grid-template-columns:repeat(3,1fr); gap:12px; margin-top:6px}
+.pad button{height:68px; border-radius:50%; aspect-ratio:1; justify-self:center;
+  border:1px solid var(--rule); background:var(--surface); font-size:26px; font-weight:600}
+.pad button:active{background:var(--rule2)}
+.pad button.txt{border:0; background:none; font-size:15px; color:var(--slate); font-weight:600}
+.pad button:disabled{opacity:.35}
+
+/* ---------- employee list (admin) ---------- */
+.emps{list-style:none; margin:0; padding:0}
+.emps li{background:var(--surface); border:1px solid var(--rule); border-radius:var(--radius);
+  margin-bottom:8px}
+.emps button{display:block; width:100%; text-align:left; border:0; background:none; padding:12px 14px}
+.emps .top{display:flex; align-items:baseline; gap:8px}
+.emps .nm{font-weight:700; font-size:16px}
+.emps .tt{font-size:13.5px; color:var(--slate)}
+.emps .roles{display:flex; flex-wrap:wrap; gap:5px; margin-top:7px}
+.emps .top .pill{margin-left:auto}
+
+/* ---------- forms + sheet ---------- */
+label.f{display:flex; flex-direction:column; gap:4px; font-size:13.5px; color:var(--slate);
+  font-weight:600; margin-bottom:12px}
+label.f input{padding:10px 12px; border:1px solid var(--rule); border-radius:var(--radius);
+  background:var(--sunk); color:var(--ink); font-size:16px; font-weight:500; width:100%}
+fieldset{border:0; padding:0; margin:0 0 12px}
+legend{font-size:13.5px; color:var(--slate); font-weight:600; margin-bottom:6px; padding:0}
+.checks{display:grid; grid-template-columns:repeat(auto-fill,minmax(160px,1fr)); gap:6px}
+.checks label{display:flex; align-items:center; gap:9px; padding:9px 10px; border:1px solid var(--rule);
+  border-radius:var(--radius); font-size:15px; background:var(--sunk)}
+.checks input{width:19px; height:19px; accent-color:var(--water)}
+.checks label.dis{opacity:.5}
+.scrim{position:fixed; inset:0; z-index:60; background:rgba(8,14,19,.55);
+  display:flex; align-items:flex-end; justify-content:center}
+.sheet{background:var(--surface); width:100%; max-width:560px; max-height:92vh; overflow-y:auto;
+  border-radius:14px 14px 0 0; padding:18px 16px calc(18px + env(safe-area-inset-bottom,0px))}
+@media (min-width:600px){ .scrim{align-items:center} .sheet{border-radius:12px} }
+.sheet h3{margin:0 0 14px; font-size:18px; display:flex; align-items:center}
+.sheet hr{border:0; border-top:1px solid var(--rule); margin:18px 0}
+.pinrow{display:flex; gap:8px}
+.pinrow input{flex:1; letter-spacing:.3em; font-weight:700}
+
+#toast{position:fixed; left:50%; transform:translateX(-50%);
+  bottom:calc(24px + env(safe-area-inset-bottom,0px)); z-index:80;
+  background:var(--ink); color:var(--paper); padding:10px 18px; border-radius:22px;
+  font-weight:600; font-size:14.5px; opacity:0; pointer-events:none; transition:opacity .18s;
+  max-width:calc(100% - 32px); text-align:center}
+#toast.show{opacity:1}
+.offline{background:var(--warnbg); color:var(--dig); text-align:center; font-size:13.5px;
+  font-weight:600; padding:6px 12px; border-bottom:1px solid var(--dig)}
+.spin{display:block; margin:60px auto; width:34px; height:34px; border-radius:50%;
+  border:3px solid var(--rule); border-top-color:var(--water); animation:rot .8s linear infinite}
+@keyframes rot{to{transform:rotate(360deg)}}
+@media (prefers-reduced-motion: reduce){*{transition:none!important; animation:none!important}}
+</style>
+</head>
+<body>
+<div class="topbar">
+  <header class="bar">
+    <div class="brand">Icon Pools <span>Team</span></div>
+    <div class="grow"></div>
+    <div class="who" id="who"></div>
+  </header>
+  <div class="offline" id="offline" hidden>No connection. Some things won't load until you're back online.</div>
+  <nav class="tabs" id="tabs" role="tablist" hidden></nav>
+</div>
+<main id="view"><span class="spin" aria-label="Loading"></span></main>
+<div id="toast" role="status" aria-live="polite"></div>
+
+<script src="config.js"></script>
+<script src="app.js"></script>
+</body>
+</html>

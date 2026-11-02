@@ -1454,6 +1454,9 @@ const TABS=[["board","Board"],["pipeline","Pipeline"],["schedule","Job progress"
             ["settings","Rules"],["help","How it works"]];
 function renderTabs(){
   const n=document.getElementById("tabs"); n.innerHTML="";
+  // view-only staff get the calendar alone, with no other board tabs
+  n.style.display=App.canEdit?"":"none";
+  if(!App.canEdit){ App.tab="board"; return; }
   for(const [id,label] of TABS){
     const b=el("button",null,label);
     b.setAttribute("role","tab");
@@ -1941,8 +1944,12 @@ function taskMenu(jobId,task){
 function viewBoard(){
   const v=document.createElement("div");
   const crew=(App.staged.cfg&&App.staged.cfg.crew)||8;
-  v.appendChild(el("h2",null,"The next two weeks"));
-  v.appendChild(el("p","sub","Drag a job to a different day to move it. Tap one to set a date by hand. Nothing saves until you approve it."));
+  // Crew view: anyone who can't edit sees just the calendar, not the business side
+  const crewOnly=!App.canEdit;
+  v.appendChild(el("h2",null,crewOnly?"Crew schedule":"The next two weeks"));
+  v.appendChild(el("p","sub",crewOnly
+    ? "Which pool, which step, which day. This updates on its own when the office changes the schedule."
+    : "Drag a job to a different day to move it. Tap one to set a date by hand. Nothing saves until you approve it."));
 
   const breach=App.staged.jobs.filter(isPool).filter(j=>{const p=promiseFor(j); return p.over!=null&&p.overFlag>0;});
   const gaps=App.staged.jobs.filter(isPool).filter(j=>{const p=promiseFor(j); return p.over!=null&&p.overFlag<=0&&p.gapFlag>30;});
@@ -1973,7 +1980,7 @@ function viewBoard(){
   strip.appendChild(stat("To do this week", todo.length, late?"alert":todo.length?"warn":""));
   if(breach.length) strip.appendChild(stat("Past contract date", breach.length,"alert","pipeline"));
   if(gaps.length) strip.appendChild(stat("Past what customer expects", gaps.length,"warn","pipeline"));
-  v.appendChild(strip);
+  if(!crewOnly) v.appendChild(strip);
 
   const ctl=el("div","boardctl");
   const back=el("button","btn sm","\u2190 Two weeks back");
@@ -1990,8 +1997,10 @@ function viewBoard(){
     const oo=el("button","btn sm","Add one-off task");
     oo.onclick=()=>openOneOff(null); ctl.appendChild(oo);
   }
-  const pr=el("button","btn sm primary","Print crew sheet");
-  pr.onclick=()=>printSheets(mon); ctl.appendChild(pr);
+  if(!crewOnly){
+    const pr=el("button","btn sm primary","Print crew sheet");
+    pr.onclick=()=>printSheets(mon); ctl.appendChild(pr);
+  }
   v.appendChild(ctl);
 
   const wrap=el("div","calwrap");
@@ -2047,7 +2056,7 @@ function viewBoard(){
       c.appendChild(el("i",null,r.task+(r.cat==="SUB"?" (sub)":"")));
       cell.appendChild(c);
     });
-    App.sched.rows.filter(r=>r.tpl&&r.tpl.draw&&r.start===dstr).forEach(r=>{
+    if(!crewOnly) App.sched.rows.filter(r=>r.tpl&&r.tpl.draw&&r.start===dstr).forEach(r=>{
       const c=el("div","chip2");
       c.style.setProperty("--jc","var(--moss)");
       c.innerHTML="<b>"+esc(r.job)+"<span class='draw'>DRAW "+r.tpl.draw+"</span></b>"+
@@ -2057,7 +2066,7 @@ function viewBoard(){
     if(!A.list.length && !A.casey.length)
       cell.appendChild(el("div","c2f",(wknd||blk)?"":"Crew free"));
 
-    if(!wknd && !blk){
+    if(!wknd && !blk && !crewOnly){
       const bar=el("div","bar");
       let n=0;
       A.list.forEach(a=>{ const k=Math.round(a.men);
@@ -2096,6 +2105,7 @@ function viewBoard(){
     lg.appendChild(sp);
   });
   v.appendChild(lg);
+  if(crewOnly) return v;
 
   const items=triggerItems().filter(x=>diffD(x.due,addD(todayStr(),14))<=0 &&
     (!x.done || diffD(x.due,addD(todayStr(),-3))>=0));
@@ -3720,16 +3730,13 @@ const Downloads={
   App.canEdit = roles.indexOf("Owner")>=0 || roles.indexOf("Administrator")>=0;
   App.db=BoardDB.db; App.dl=Downloads; App.sample=null; App.user=null;
   document.getElementById("whoami").textContent = me.employee.name + (App.canEdit?"":" · View only");
-  if(EMBEDDED && !App.canEdit) document.querySelector("main").prepend(Object.assign(
-    document.createElement("p"),{className:"note",style:"margin:0 0 10px",
-      textContent:"View only. Owners and Administrators make schedule changes."}));
   try{ const v=await BoardDB.rpc("board_version"); BoardDB.setVersion(v.version); }catch(e){}
   await loadAll();
   render();
   App.db.doc("config/baseline").onSnapshot(snap=>{
     if(!snap.exists) return;
     if(snap.metadata && snap.metadata.hasPendingWrites) return;
-    if(isDirty()) return;               // never clobber unreviewed local edits
+    if(App.canEdit && isDirty()) return;   // never clobber unreviewed local edits (viewers have none)
     loadAll().then(render);
   },()=>{});
 })();

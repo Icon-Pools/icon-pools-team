@@ -1,8 +1,8 @@
 // Service worker: lets the app install and open even with a weak signal.
 // It always tries the network first, so new versions show up right away,
 // and falls back to the saved copy when offline. Database calls are never cached.
-const CACHE = "ipt-v1";
-const SHELL = ["./", "index.html", "app.js", "config.js", "manifest.webmanifest",
+const CACHE = "ipt-v2";
+const SHELL = ["./", "index.html", "app.js", "config.js", "board.html", "manifest.webmanifest",
                "icon-192.png", "icon-512.png", "apple-touch-icon.png"];
 
 self.addEventListener("install", e => {

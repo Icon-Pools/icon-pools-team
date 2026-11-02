@@ -252,24 +252,53 @@ async function logOut(){
 function signedOut(msg){
   App.token=null; App.me=null; App.staff=null;
   save(TOKEN_KEY,null); save(ME_KEY,null);
-  closeSheet(); showNames(msg);
+  closeSheet(); dropBoard(); $("view").hidden=false; showNames(msg);
 }
 
 /* ============================================================================
    SIGNED IN
    ========================================================================== */
+const TABS=[["home","Home"],["construction","Construction"],["service","Service"],
+            ["retail","Retail"],["hottubs","Hot Tubs"]];
 function showApp(){
   App.screen="app"; chrome(true);
-  if(App.tab==="admin" && !isAdmin(App.me)) App.tab="home";
-  const tabs=[["home","Home"]];
+  const tabs=TABS.slice();
   if(isAdmin(App.me)) tabs.push(["admin","Admin"]);
+  if(!tabs.some(t=>t[0]===App.tab)) App.tab="home";
   $("tabs").innerHTML=tabs.map(t=>'<button role="tab" data-t="'+t[0]+'" aria-selected="'+
     (App.tab===t[0])+'">'+t[1]+'</button>').join("");
   $("tabs").querySelectorAll("button").forEach(b=>{
     b.onclick=()=>{ App.tab=b.dataset.t; showApp(); };
   });
-  if(App.tab==="admin") viewAdmin(); else viewHome();
+  const onBoard=App.tab==="construction";
+  showBoard(onBoard);
+  $("view").hidden=onBoard;
+  if(onBoard) return;
+  if(App.tab==="admin") viewAdmin(); else if(App.tab==="home") viewHome(); else viewSoon();
+  const sel=$("tabs").querySelector('[aria-selected="true"]');
+  if(sel) sel.scrollIntoView({block:"nearest",inline:"nearest"});
 }
+
+/* ---------- Construction tab: the Production Board ----------
+   board.html runs inside the tab. It's created once and only hidden when you
+   switch tabs, so unapproved schedule changes survive a trip to another tab. */
+function showBoard(on){
+  let host=$("boardHost");
+  if(on && !host){
+    host=document.createElement("div"); host.id="boardHost";
+    host.innerHTML='<iframe src="board.html" title="Production Board"></iframe>';
+    document.body.insertBefore(host,$("toast"));
+  }
+  if(host) host.hidden=!on;
+  sizeBoard();
+}
+function sizeBoard(){
+  const host=$("boardHost"); if(!host || host.hidden) return;
+  const top=document.querySelector(".topbar").getBoundingClientRect().bottom;
+  host.firstChild.style.height=Math.max(300,window.innerHeight-top)+"px";
+}
+window.addEventListener("resize",sizeBoard);
+function dropBoard(){ const host=$("boardHost"); if(host) host.remove(); }
 
 function isInstalled(){
   return window.matchMedia("(display-mode: standalone)").matches || navigator.standalone===true;
@@ -289,17 +318,21 @@ function installCard(){
 
 function viewHome(){
   const me=App.me;
+  const go=TABS.slice(1).concat(isAdmin(me)?[["admin","Admin"]]:[]);
   setView('<h2>Hi, '+esc(firstName(me.name))+'</h2>'+
     '<p class="sub">You\'ll stay signed in on this device until you log out.</p>'+
+    '<div class="checks" style="margin-bottom:14px">'+go.map(t=>
+      '<button class="btn" data-go="'+t[0]+'" style="min-height:56px">'+t[1]+'</button>').join("")+'</div>'+
     '<div class="card"><h3>Your profile</h3>'+
     '<div style="font-size:17px;font-weight:600">'+esc(me.name)+'</div>'+
     (me.title?'<div class="muted">'+esc(me.title)+'</div>':'')+
     '<div class="row" style="margin-top:10px;gap:5px">'+
     (me.roles||[]).map(r=>'<span class="pill role">'+esc(r)+'</span>').join("")+'</div></div>'+
     installCard()+
-    '<div class="card"><h3>More coming soon</h3><p class="muted small" style="margin:0">'+
-    'New tools for the team will show up here.</p></div>'+
     '<button class="btn danger block" id="homeOut">Log out</button>');
+  $("view").querySelectorAll("[data-go]").forEach(b=>{
+    b.onclick=()=>{ App.tab=b.dataset.go; showApp(); };
+  });
   $("homeOut").onclick=logOut;
   const ib=$("installBtn");
   if(ib) ib.onclick=async()=>{
@@ -308,6 +341,13 @@ function viewHome(){
     try{ await ev.userChoice; }catch(e){}
     if(App.screen==="app" && App.tab==="home") viewHome();
   };
+}
+// Service, Retail and Hot Tubs: placeholders until their tools are built
+function viewSoon(){
+  const label=(TABS.find(t=>t[0]===App.tab)||[,""])[1];
+  setView('<h2>'+esc(label)+'</h2>'+
+    '<div class="card"><h3>Coming soon</h3><p class="muted small" style="margin:0">'+
+    esc(label)+' tools for the team will show up here.</p></div>');
 }
 window.addEventListener("beforeinstallprompt",e=>{
   e.preventDefault(); App.installEvt=e;

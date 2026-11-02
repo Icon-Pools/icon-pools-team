@@ -3,7 +3,7 @@
 // and falls back to the saved copy when offline. Database calls are never cached.
 const CACHE = "ipt-v1";
 const SHELL = ["./", "index.html", "app.js", "config.js", "manifest.webmanifest",
-               "icons/icon-192.png", "icons/icon-512.png", "icons/apple-touch-icon.png"];
+               "icon-192.png", "icon-512.png", "apple-touch-icon.png"];
 
 self.addEventListener("install", e => {
   e.waitUntil(caches.open(CACHE).then(c => c.addAll(SHELL)).then(() => self.skipWaiting()));

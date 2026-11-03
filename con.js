@@ -45,20 +45,20 @@ function openSheet(title,body){
 }
 function failMsg(e){ if(e && e.code!=="expired") alert(e.message); }
 function loading(){ return '<span class="spin" aria-label="Loading"></span>'; }
-function stillOn(tab){ return App.screen==="app" && App.tab==="construction" && App.ctab===tab; }
+function stillOn(tab){ return App.screen==="app" && App.tab==="construction" && App.subs.construction===tab; }
 
 /* ---------- Construction sub-tab routing ---------- */
-function conTabs(){
+function conTabs(){            // after Announcements, which every department has
   const t=[["schedule","Schedule"]];
   if(isCrew(App.me)) t.push(["checkin","Check in"],["notes","Notes"]);
   if(isAdmin(App.me)) t.push(["hours","Hours"]);
   return t;
 }
 function viewConstruction(){
-  if(App.ctab==="checkin") return viewCheckin();
-  if(App.ctab==="notes") return viewNotes();
-  if(App.ctab==="hours") return viewHours();
-  viewSoon();
+  const s=App.subs.construction;
+  if(s==="checkin") return viewCheckin();
+  if(s==="notes") return viewNotes();
+  if(s==="hours") return viewHours();
 }
 let jobsCache=null;
 async function conJobs(force){
@@ -70,8 +70,7 @@ async function conJobs(force){
    CHECK IN / OUT
    ========================================================================== */
 async function viewCheckin(){
-  setView('<h2>Check in</h2><p class="sub">Tap the pool when you get there. Tap Check out when you leave.</p>'+
-    '<div id="ci">'+loading()+'</div>');
+  setView('<div id="ci">'+loading()+'</div>');
   let st, jobs;
   try{ [st,jobs]=await Promise.all([rpc("time_status",{p_token:App.token}), conJobs(true)]); }
   catch(e){ if(e.code!=="expired" && $("ci")) $("ci").innerHTML='<div class="notice err">'+esc(e.message)+'</div>'; return; }
@@ -120,7 +119,7 @@ function drawCheckin(st,jobs){
            (r.check_out?esc(tClock(r.check_out)):'<b>now</b>')+'</td><td class="n">'+fmtH(hoursBetween(r.check_in,r.check_out))+'</td></tr>';
       });
     });
-    h+='</tbody></table><p class="muted small" style="margin:8px 0 0">Something wrong? Tell an Owner or Administrator and they can fix it.</p></div>';
+    h+='</tbody></table></div>';
   }
   host.innerHTML=h;
   host.querySelectorAll("[data-j]").forEach(b=>{
@@ -148,10 +147,9 @@ function drawCheckin(st,jobs){
    ========================================================================== */
 App.notesJob = App.notesJob===undefined ? "" : App.notesJob;   // "" = general
 async function viewNotes(){
-  setView('<div class="row" style="margin-bottom:4px"><h2 style="flex:1;margin:0">Notes</h2>'+
-    '<button class="btn sm" id="toArchive">Archive</button></div>'+
-    '<p class="sub">General notes show on everyone\'s Home screen. Each pool has its own notes too.</p>'+
-    '<label class="f">Show notes for<select id="noteJob"><option value="">General</option></select></label>'+
+  setView('<div class="row" style="margin-bottom:12px;flex-wrap:nowrap">'+
+    '<select id="noteJob" class="pick" aria-label="Show notes for"><option value="">General</option></select>'+
+    '<button class="btn ghost sm" id="toArchive">Archive</button></div>'+
     '<div id="notesHost">'+loading()+'</div>');
   $("toArchive").onclick=viewArchive;
   let jobs=[];
@@ -189,7 +187,7 @@ async function notesBlock(host,jobId,opt){
     toast("Note posted"); notesBlock(host,jobId,opt);
   });
   const more=host.querySelector("[data-more]");
-  if(more) more.onclick=()=>{ App.tab="construction"; App.ctab="notes"; App.notesJob=jobId||""; showApp(); };
+  if(more) more.onclick=()=>{ App.tab="construction"; App.subs.construction="notes"; App.notesJob=jobId||""; showApp(); };
   wireNotes(host,list,()=>notesBlock(host,jobId,opt));
 }
 function noteItem(n,archived){
@@ -247,8 +245,7 @@ async function noteHistory(n){
 // Archive: every deleted note, grouped by pool, then by month
 async function viewArchive(){
   setView('<button class="btn ghost sm" id="back">&lsaquo; Notes</button>'+
-    '<h2>Archive</h2><p class="sub">Deleted notes, kept so you can go back and see what was said. '+
-    'Owners and Administrators can restore a note.</p><div id="arch">'+loading()+'</div>');
+    '<h2>Notes archive</h2><div id="arch">'+loading()+'</div>');
   $("back").onclick=viewNotes;
   let list;
   try{ list=await rpc("notes_list",{p_token:App.token, p_job_id:"*", p_archived:true}); }
@@ -273,14 +270,6 @@ async function viewArchive(){
   wireNotes(host,list,viewArchive);
 }
 
-// Home screen: the latest general notes
-function homeNotesCard(){
-  if(!isCrew(App.me)) return "";
-  return '<div class="card"><h3>Team notes</h3><div id="homeNotes">'+loading()+'</div></div>';
-}
-function fillHomeNotes(){
-  const host=$("homeNotes"); if(host) notesBlock(host,null,{limit:5});
-}
 
 /* ============================================================================
    HOURS (Owners and Administrators)
@@ -289,8 +278,7 @@ App.hoursFrom = App.hoursFrom || weekStart(new Date());
 async function viewHours(){
   const from=new Date(App.hoursFrom), to=new Date(from); to.setDate(from.getDate()+7);
   const last=new Date(to); last.setDate(to.getDate()-1);
-  setView('<h2>Hours</h2><p class="sub">Construction check-ins, Monday to Sunday. Tap an entry to fix it.</p>'+
-    '<div class="row" style="margin-bottom:12px">'+
+  setView('<div class="row" style="margin-bottom:12px">'+
       '<button class="btn sm" id="wPrev" aria-label="Previous week">&lsaquo;</button>'+
       '<b style="min-width:150px;text-align:center">'+esc(MONS[from.getMonth()]+" "+from.getDate()+" – "+MONS[last.getMonth()]+" "+last.getDate())+'</b>'+
       '<button class="btn sm" id="wNext" aria-label="Next week">&rsaquo;</button>'+

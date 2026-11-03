@@ -13,7 +13,7 @@ const ALL_ROLES = ["Owner","Administrator","Office Staff","Service Lead",
 const PIN_LEN = 6;
 
 const App = {
-  token:null, me:null, screen:"boot", tab:"home", ctab:"schedule",
+  token:null, me:null, screen:"boot", tab:"home", subs:{},
   names:null, needsSetup:false, picked:null,
   pin:"", pinMode:"login", firstPin:"", busy:false, lockEnd:0, lockTimer:null,
   staff:null, installEvt:null
@@ -270,31 +270,40 @@ function showApp(){
   $("tabs").querySelectorAll("button").forEach(b=>{
     b.onclick=()=>{ App.tab=b.dataset.t; showApp(); };
   });
-  const inCon=App.tab==="construction";
-  drawSubtabs(inCon);
-  const onBoard=inCon && App.ctab==="schedule";
+  const inDept=DEPTS.indexOf(App.tab)>=0;
+  drawSubtabs(inDept);
+  const onBoard=App.tab==="construction" && sub()==="schedule";
   showBoard(onBoard);
   $("view").hidden=onBoard;
   const sel=$("tabs").querySelector('[aria-selected="true"]');
   if(sel) sel.scrollIntoView({block:"nearest",inline:"nearest"});
   if(onBoard) return;
-  if(inCon) viewConstruction();
-  else if(App.tab==="admin") viewAdmin(); else if(App.tab==="home") viewHome(); else viewSoon();
+  if(inDept) viewDept();
+  else if(App.tab==="admin") viewAdmin(); else viewHome();
 }
 
-/* ---------- Construction tab: its own tabs, with the schedule as one of them ----------
-   conTabs() and viewConstruction() live in con.js */
+/* ---------- Departments: a row of tabs, opening on that department's announcements ----------
+   Construction's other tabs (and conTabs, viewConstruction) live in con.js */
+const DEPTS=["construction","service","retail","hottubs"];
+function deptTabs(){
+  return [["ann","Announcements"]].concat(App.tab==="construction"?conTabs():[]);
+}
+function sub(){ return App.subs[App.tab]||"ann"; }
 function drawSubtabs(on){
   const nav=$("subtabs");
   nav.hidden=!on;
   if(!on){ nav.innerHTML=""; return; }
-  const tabs=conTabs();
-  if(!tabs.some(t=>t[0]===App.ctab)) App.ctab="schedule";
+  const tabs=deptTabs();
+  if(!tabs.some(t=>t[0]===sub())) App.subs[App.tab]="ann";
   nav.innerHTML=tabs.map(t=>'<button role="tab" data-c="'+t[0]+'" aria-selected="'+
-    (App.ctab===t[0])+'">'+t[1]+'</button>').join("");
+    (sub()===t[0])+'">'+t[1]+'</button>').join("");
   nav.querySelectorAll("button").forEach(b=>{
-    b.onclick=()=>{ App.ctab=b.dataset.c; showApp(); };
+    b.onclick=()=>{ App.subs[App.tab]=b.dataset.c; showApp(); };
   });
+}
+function viewDept(){
+  if(sub()==="ann"){ setView('<div id="annHost"></div>'); annBlock($("annHost"),App.tab); return; }
+  viewConstruction();
 }
 
 
@@ -335,26 +344,10 @@ function installCard(){
   return '<div class="card"><h3>Put this app on your home screen</h3>'+body+'</div>';
 }
 
+// Home: the general announcements, and nothing else (plus how to install, until it is)
 function viewHome(){
-  const me=App.me;
-  const go=TABS.slice(1).concat(isAdmin(me)?[["admin","Admin"]]:[]);
-  setView('<h2>Hi, '+esc(firstName(me.name))+'</h2>'+
-    '<p class="sub">You\'ll stay signed in on this device until you log out.</p>'+
-    homeNotesCard()+
-    '<div class="checks" style="margin-bottom:14px">'+go.map(t=>
-      '<button class="btn" data-go="'+t[0]+'" style="min-height:56px">'+t[1]+'</button>').join("")+'</div>'+
-    '<div class="card"><h3>Your profile</h3>'+
-    '<div style="font-size:17px;font-weight:600">'+esc(me.name)+'</div>'+
-    (me.title?'<div class="muted">'+esc(me.title)+'</div>':'')+
-    '<div class="row" style="margin-top:10px;gap:5px">'+
-    (me.roles||[]).map(r=>'<span class="pill role">'+esc(r)+'</span>').join("")+'</div></div>'+
-    installCard()+
-    '<button class="btn danger block" id="homeOut">Log out</button>');
-  $("view").querySelectorAll("[data-go]").forEach(b=>{
-    b.onclick=()=>{ App.tab=b.dataset.go; showApp(); };
-  });
-  $("homeOut").onclick=logOut;
-  fillHomeNotes();
+  setView('<h2>Announcements</h2><div id="annHost"></div>'+installCard());
+  annBlock($("annHost"),"general");
   const ib=$("installBtn");
   if(ib) ib.onclick=async()=>{
     const ev=App.installEvt; if(!ev) return;
@@ -362,13 +355,6 @@ function viewHome(){
     try{ await ev.userChoice; }catch(e){}
     if(App.screen==="app" && App.tab==="home") viewHome();
   };
-}
-// Service, Retail and Hot Tubs: placeholders until their tools are built
-function viewSoon(){
-  const label=(TABS.find(t=>t[0]===App.tab)||[,""])[1];
-  setView('<h2>'+esc(label)+'</h2>'+
-    '<div class="card"><h3>Coming soon</h3><p class="muted small" style="margin:0">'+
-    esc(label)+' tools for the team will show up here.</p></div>');
 }
 window.addEventListener("beforeinstallprompt",e=>{
   e.preventDefault(); App.installEvt=e;

@@ -146,8 +146,38 @@ h2{font-size:20px; margin:0 0 4px; letter-spacing:-.01em}
 /* ---------- forms + sheet ---------- */
 label.f{display:flex; flex-direction:column; gap:4px; font-size:13.5px; color:var(--slate);
   font-weight:600; margin-bottom:12px}
-label.f input{padding:10px 12px; border:1px solid var(--rule); border-radius:var(--radius);
+label.f input,label.f select,label.f textarea{padding:10px 12px; border:1px solid var(--rule); border-radius:var(--radius);
   background:var(--sunk); color:var(--ink); font-size:16px; font-weight:500; width:100%}
+label.f textarea{resize:vertical; font-family:inherit; line-height:1.4}
+/* ---------- construction: check in, notes, hours ---------- */
+.clock.on{border-color:var(--moss); border-left:4px solid var(--moss)}
+.clock .big{font-size:24px; font-weight:700; letter-spacing:-.01em; margin:2px 0}
+.big-btn{min-height:56px; font-size:17px}
+.joblist{display:grid; grid-template-columns:repeat(auto-fill,minmax(150px,1fr)); gap:8px}
+.joblist .btn{min-height:52px; text-align:left}
+.tbl{width:100%; border-collapse:collapse; font-size:14.5px}
+.tbl th{text-align:left; font-size:13px; color:var(--slate); font-weight:600; padding:6px 4px; border-bottom:1px solid var(--rule)}
+.tbl td{padding:8px 4px; border-bottom:1px solid var(--rule2); vertical-align:top}
+.tbl tr:last-child td{border-bottom:0}
+.tbl .n{text-align:right; white-space:nowrap; font-variant-numeric:tabular-nums}
+.tbl .dayrow td{font-weight:700; background:var(--sunk)}
+.tbl.click tr{cursor:pointer}
+.tbl.click tr:active td{background:var(--sunk)}
+.tbl tr.void td{color:var(--faint); text-decoration:line-through}
+.tbl tr.void .pill{text-decoration:none}
+.addnote{display:flex; gap:8px; align-items:flex-end}
+.addnote textarea{flex:1; padding:9px 11px; border:1px solid var(--rule); border-radius:var(--radius);
+  background:var(--sunk); color:var(--ink); font:inherit; font-size:16px; resize:vertical; min-height:46px}
+.notes{list-style:none; margin:10px 0 0; padding:0}
+.notes li{border-top:1px solid var(--rule2); padding:10px 0 4px}
+.nhead{display:flex; gap:8px; align-items:baseline; flex-wrap:wrap}
+.nbody{white-space:pre-wrap; overflow-wrap:anywhere; margin:3px 0}
+.nact{display:flex; gap:2px; margin-left:-12px}
+.nact .btn{min-height:32px; padding:4px 12px; font-size:13.5px}
+.hist{margin:0; padding-left:20px}
+.hist li{margin-bottom:10px}
+details.arch summary{cursor:pointer; font-size:16px}
+.arch-m{margin-top:12px; font-weight:600}
 fieldset{border:0; padding:0; margin:0 0 12px}
 legend{font-size:13.5px; color:var(--slate); font-weight:600; margin-bottom:6px; padding:0}
 .checks{display:grid; grid-template-columns:repeat(auto-fill,minmax(160px,1fr)); gap:6px}
@@ -195,5 +225,6 @@ legend{font-size:13.5px; color:var(--slate); font-weight:600; margin-bottom:6px;
 
 <script src="config.js"></script>
 <script src="app.js"></script>
+<script src="con.js"></script>
 </body>
 </html>

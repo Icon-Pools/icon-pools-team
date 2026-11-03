@@ -282,10 +282,8 @@ function showApp(){
   else if(App.tab==="admin") viewAdmin(); else if(App.tab==="home") viewHome(); else viewSoon();
 }
 
-/* ---------- Construction tab: its own tabs, with the schedule as one of them ---------- */
-function conTabs(){
-  return [["schedule","Schedule"]];
-}
+/* ---------- Construction tab: its own tabs, with the schedule as one of them ----------
+   conTabs() and viewConstruction() live in con.js */
 function drawSubtabs(on){
   const nav=$("subtabs");
   nav.hidden=!on;
@@ -298,7 +296,7 @@ function drawSubtabs(on){
     b.onclick=()=>{ App.ctab=b.dataset.c; showApp(); };
   });
 }
-function viewConstruction(){ viewSoon(); }
+
 
 /* ---------- Construction tab: the Production Board ----------
    board.html runs inside the tab. It's created once and only hidden when you
@@ -342,6 +340,7 @@ function viewHome(){
   const go=TABS.slice(1).concat(isAdmin(me)?[["admin","Admin"]]:[]);
   setView('<h2>Hi, '+esc(firstName(me.name))+'</h2>'+
     '<p class="sub">You\'ll stay signed in on this device until you log out.</p>'+
+    homeNotesCard()+
     '<div class="checks" style="margin-bottom:14px">'+go.map(t=>
       '<button class="btn" data-go="'+t[0]+'" style="min-height:56px">'+t[1]+'</button>').join("")+'</div>'+
     '<div class="card"><h3>Your profile</h3>'+
@@ -355,6 +354,7 @@ function viewHome(){
     b.onclick=()=>{ App.tab=b.dataset.go; showApp(); };
   });
   $("homeOut").onclick=logOut;
+  fillHomeNotes();
   const ib=$("installBtn");
   if(ib) ib.onclick=async()=>{
     const ev=App.installEvt; if(!ev) return;

@@ -13,7 +13,7 @@ const ALL_ROLES = ["Owner","Administrator","Office Staff","Service Lead",
 const PIN_LEN = 6;
 
 const App = {
-  token:null, me:null, screen:"boot", tab:"home",
+  token:null, me:null, screen:"boot", tab:"home", ctab:"schedule",
   names:null, needsSetup:false, picked:null,
   pin:"", pinMode:"login", firstPin:"", busy:false, lockEnd:0, lockTimer:null,
   staff:null, installEvt:null
@@ -270,14 +270,35 @@ function showApp(){
   $("tabs").querySelectorAll("button").forEach(b=>{
     b.onclick=()=>{ App.tab=b.dataset.t; showApp(); };
   });
-  const onBoard=App.tab==="construction";
+  const inCon=App.tab==="construction";
+  drawSubtabs(inCon);
+  const onBoard=inCon && App.ctab==="schedule";
   showBoard(onBoard);
   $("view").hidden=onBoard;
-  if(onBoard) return;
-  if(App.tab==="admin") viewAdmin(); else if(App.tab==="home") viewHome(); else viewSoon();
   const sel=$("tabs").querySelector('[aria-selected="true"]');
   if(sel) sel.scrollIntoView({block:"nearest",inline:"nearest"});
+  if(onBoard) return;
+  if(inCon) viewConstruction();
+  else if(App.tab==="admin") viewAdmin(); else if(App.tab==="home") viewHome(); else viewSoon();
 }
+
+/* ---------- Construction tab: its own tabs, with the schedule as one of them ---------- */
+function conTabs(){
+  return [["schedule","Schedule"]];
+}
+function drawSubtabs(on){
+  const nav=$("subtabs");
+  nav.hidden=!on;
+  if(!on){ nav.innerHTML=""; return; }
+  const tabs=conTabs();
+  if(!tabs.some(t=>t[0]===App.ctab)) App.ctab="schedule";
+  nav.innerHTML=tabs.map(t=>'<button role="tab" data-c="'+t[0]+'" aria-selected="'+
+    (App.ctab===t[0])+'">'+t[1]+'</button>').join("");
+  nav.querySelectorAll("button").forEach(b=>{
+    b.onclick=()=>{ App.ctab=b.dataset.c; showApp(); };
+  });
+}
+function viewConstruction(){ viewSoon(); }
 
 /* ---------- Construction tab: the Production Board ----------
    board.html runs inside the tab. It's created once and only hidden when you

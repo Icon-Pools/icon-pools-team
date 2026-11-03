@@ -63,6 +63,9 @@ nav.tabs{display:flex; gap:2px; padding:0 4px; background:var(--surface);
 nav.tabs button{flex:1 0 auto; border:0; background:none; padding:11px 10px; font-weight:600; font-size:14.5px;
   color:var(--slate); border-bottom:2px solid transparent; white-space:nowrap}
 #boardHost iframe{display:block; width:100%; border:0}
+/* Construction's own tabs, under the main ones */
+nav.subtabs{background:var(--sunk); justify-content:flex-start}
+nav.subtabs button{flex:0 0 auto; padding:8px 14px; font-size:14px}
 nav.tabs button[aria-selected="true"]{color:var(--ink); border-bottom-color:var(--water)}
 main{padding:16px; max-width:720px; margin:0 auto}
 h2{font-size:20px; margin:0 0 4px; letter-spacing:-.01em}
@@ -185,6 +188,7 @@ legend{font-size:13.5px; color:var(--slate); font-weight:600; margin-bottom:6px;
   </header>
   <div class="offline" id="offline" hidden>No connection. Some things won't load until you're back online.</div>
   <nav class="tabs" id="tabs" role="tablist" hidden></nav>
+  <nav class="tabs subtabs" id="subtabs" role="tablist" aria-label="Construction" hidden></nav>
 </div>
 <main id="view"><span class="spin" aria-label="Loading"></span></main>
 <div id="toast" role="status" aria-live="polite"></div>

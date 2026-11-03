@@ -216,6 +216,14 @@ label.cb{display:flex; align-items:center; gap:7px; font-size:14px; font-weight:
 tr.nextslot td{background:var(--paper2, rgba(127,127,127,.07)); border-top:1px dashed var(--rule2, #bbb)}
 .overbox{border:2px solid var(--oxide); border-radius:4px; padding:8px 11px; margin-bottom:12px; font-size:13.5px}
 .overbox ul{margin:5px 0 5px 18px; padding:0}
+/* move reasons */
+.mvnote{display:block; font-size:11px; line-height:1.3; color:var(--dig); font-weight:600; margin:1px 0 2px}
+p.mvnote{font-size:13px; margin:-6px 0 12px}
+.reasons{display:flex; flex-direction:column; gap:2px}
+.reasons label.cb{padding:8px 0; align-self:stretch}
+.reasons input{width:18px; height:18px; accent-color:var(--water)}
+.shiftlist{margin:6px 0 0 16px; padding:0; font-size:12.5px}
+.shiftlist[hidden]{display:none}
 @media (max-width:820px){
   .dowrow{display:none}
   .cal{grid-template-columns:repeat(2,1fr)}
@@ -1478,7 +1486,7 @@ const el=(t,c,x)=>{const e=document.createElement(t); if(c)e.className=c;
   if(x!=null)e.textContent=x; return e;};
 const esc=s=>String(s==null?"":s).replace(/[&<>"']/g,m=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[m]));
 
-const TABS=[["board","Board"],["pipeline","Pipeline"],["schedule","Job progress"],
+const TABS=[["board","Board"],["pipeline","Pipeline"],["schedule","Job progress"],["moves","Moved dates"],
             ["calendar","Lost days"],["outlook","Long range"],
             ["settings","Rules"],["help","How it works"]];
 function renderTabs(){
@@ -1655,7 +1663,9 @@ function renderPending(){
   slot.appendChild(box);
 }
 async function approve(){
+  const undoStamp=stampMoves();
   const ok=await saveAll();
+  if(!ok) undoStamp();
   if(ok){ App.remoteWaiting=false; render(); toast("Schedule approved and saved"); BoardDB_checkNow(); }
 }
 function openReview(){
@@ -1930,8 +1940,104 @@ function clearLaterDates(j,task,date){
     ["force","pins"].forEach(f=>{ if(j[f] && j[f][t] && diffD(j[f][t],date)<0) delete j[f][t]; });
   });
 }
-function moveTask(jobId,task,date){
+/* ---------- MOVE REASONS ----------
+   Every hand move asks why. The reason is kept on the pool as j.moves (a map by
+   id, so two people's moves merge on save). When the change is approved, the
+   schedule is rebuilt without the hand moves to find which other tasks shifted
+   only because of them; those get j.shifted notes shown on the calendar. */
+const MOVE_REASONS=["Better flow","Outside issue","Internal issue","Weather delay","Other"];
+function askMoveReason(what,done){
+  const scrim=el("div","scrim"), m=el("div","modal");
+  m.style.maxWidth="440px";
+  const h=el("div","mhead"); h.appendChild(el("h3",null,"Why is this moving?"));
+  m.appendChild(h);
+  const b=el("div","mbody");
+  b.appendChild(el("p","sub",what));
+  const list=el("div","reasons");
+  MOVE_REASONS.forEach(r=>{
+    const l=el("label","cb"); const i=el("input"); i.type="radio"; i.name="mvwhy"; i.value=r;
+    l.append(i,document.createTextNode(r)); list.appendChild(l);
+  });
+  b.appendChild(list);
+  const dl=el("label","f"); dl.appendChild(el("span",null,"More detail (optional)"));
+  const dt=el("textarea"); dt.rows=2; dt.maxLength=500; dl.appendChild(dt);
+  dl.style.marginTop="10px"; b.appendChild(dl);
+  m.appendChild(b);
+  const f=el("div","mfoot");
+  const c=el("button","btn","Cancel"); c.onclick=()=>scrim.remove();
+  const ok=el("button","btn primary","Move it");
+  ok.onclick=()=>{
+    const pick=list.querySelector("input:checked");
+    if(!pick){ toast("Pick a reason"); return; }
+    scrim.remove(); done({reason:pick.value, detail:dt.value.trim()});
+  };
+  f.append(c,ok); m.appendChild(f); scrim.appendChild(m);
+  scrim.onclick=e=>{ if(e.target===scrim) scrim.remove(); };
+  document.body.appendChild(scrim);
+}
+function startOf(jobId,task){
+  const r=App.sched.rows.find(x=>x.jobId===jobId&&x.task===task&&x.start); return r?r.start:null;
+}
+// kind: "date" (must run on), "notbefore", or "auto" (hand date cleared)
+function recordMove(j,task,from,to,kind,why){
+  j.moves=j.moves||{};
+  // a second move of the same step before approving replaces the first, keeping its original date
+  const ex=Object.keys(j.moves).find(k=>!j.moves[k].savedAt && j.moves[k].task===task);
+  const id=ex||("m"+Date.now().toString(36)+Math.random().toString(36).slice(2,6));
+  j.moves[id]={task, from:ex?j.moves[ex].from:(from||null), to:to||null, kind,
+    reason:why.reason, detail:why.detail||"", by:App.meName||"", at:new Date().toISOString()};
+}
+function moveToText(m){
+  return m.kind==="date"?fmt(m.to):m.kind==="notbefore"?"not before "+fmt(m.to):"scheduler decides";
+}
+// On approve: stamp unsaved moves and work out the knock-on shifts. Returns an undo for a failed save.
+function stampMoves(){
+  const pend=[];
+  App.staged.jobs.forEach(j=>Object.keys(j.moves||{}).forEach(id=>{ if(!j.moves[id].savedAt) pend.push({j,m:j.moves[id]}); }));
+  if(!pend.length) return ()=>{};
+  const ids=new Set(pend.map(p=>p.j.id));
+  const committedJob=id=>App.committed.jobs.find(x=>x.id===id)||{};
+  // the same schedule without these hand moves
+  const alt=clone(App.staged.jobs).map(a=>{
+    if(!ids.has(a.id)) return a;
+    const c=committedJob(a.id); a.force=clone(c.force||{}); a.pins=clone(c.pins||{}); return a;
+  });
+  const altMap={};
+  runSchedule(alt,App.staged.cfg,App._blocked,App.staged.crew||{},App._cold).rows
+    .forEach(r=>{ if(r.cat!=="HOLD"&&r.start) altMap[key(r)]=r.start; });
+  // steps whose hand dates changed are the moves themselves, not knock-ons
+  const own=new Set();
+  ids.forEach(id=>{ const s=jobById(id)||{}, c=committedJob(id);
+    ["force","pins"].forEach(f=>{ const a=s[f]||{}, b=c[f]||{};
+      new Set(Object.keys(a).concat(Object.keys(b))).forEach(k=>{ if(a[k]!==b[k]) own.add(id+"|"+k); }); }); });
+  pend.forEach(p=>own.add(p.j.id+"|"+p.m.task));
+  const cur=currentMap();
+  const caused=Object.keys(cur).filter(k=>!own.has(k) && altMap[k]!==undefined && altMap[k]!==cur[k]).map(k=>{
+    const [jid,task]=k.split("|"), jj=jobById(jid);
+    return {jobId:jid, job:jj?jj.name:jid, task, was:altMap[k], now:cur[k]};
+  });
+  const at=new Date().toISOString();
+  const why=pend.map(p=>p.j.name+" "+p.m.task+" ("+p.m.reason.toLowerCase()+")").join("; ");
+  pend.forEach(p=>{ p.m.savedAt=at; p.m.caused=caused; });
+  caused.forEach(c=>{ const jj=jobById(c.jobId); if(!jj) return;
+    jj.shifted=jj.shifted||{}; jj.shifted[c.task]={was:c.was, now:c.now, at, why}; });
+  return ()=>pend.forEach(p=>{ delete p.m.savedAt; delete p.m.caused; });
+}
+// the note shown on a calendar task: moved by hand, or shifted because of another move
+function moveNote(jobId,task){
+  const j=jobById(jobId); if(!j) return "";
+  const hand=Object.values(j.moves||{}).filter(m=>m.task===task)
+    .sort((a,b)=>String(a.at).localeCompare(String(b.at))).pop();
+  if(hand && hand.kind!=="auto" && ((j.force||{})[task]===hand.to || (j.pins||{})[task]===hand.to))
+    return "Moved by hand: "+hand.reason.toLowerCase()+(hand.detail?" ("+hand.detail+")":"");
+  const s=(j.shifted||{})[task];
+  if(s && startOf(jobId,task)===s.now) return "Shifted from "+fmt(s.was)+": "+s.why;
+  return "";
+}
+
+function moveTask(jobId,task,date,why){
   const j=jobById(jobId); if(!j) return;
+  if(why) recordMove(j,task,startOf(jobId,task),date,"date",why);
   j.force=j.force||{}; j.force[task]=date;
   clearLaterDates(j,task,date);
   recompute(); render();
@@ -1953,6 +2059,8 @@ function taskMenu(jobId,task){
   const b=el("div","mbody");
   b.appendChild(el("p","sub","Currently "+(row&&row.start?fmt(row.start)+" to "+fmt(row.finish):"not scheduled")+
     ", "+(row?row.men:"?")+" men."+((j.force||{})[task]?" You moved this one by hand.":"")));
+  const mn=moveNote(jobId,task);
+  if(mn) b.appendChild(el("p","mvnote",mn));
   const g=el("div","fgrid");
   const mk=(l,n)=>{const w=el("label","f"); w.appendChild(el("span",null,l)); w.appendChild(n); return w;};
   const di=el("input"); di.type="date"; di.value=(j.force||{})[task]||(row&&row.start)||todayStr();
@@ -1963,17 +2071,25 @@ function taskMenu(jobId,task){
   if((j.force||{})[task]||(j.pins||{})[task]){
     const r=el("button","btn","Let the scheduler decide");
     r.style.marginRight="auto";
-    r.onclick=()=>{ if(j.force) delete j.force[task]; if(j.pins) delete j.pins[task];
-      recompute(); scrim.remove(); render(); toast("Manual date cleared. Approve to save."); };
+    r.onclick=()=>askMoveReason(j.name+" "+task+": let the scheduler decide",why=>{
+      recordMove(j,task,row&&row.start,null,"auto",why);
+      if(j.force) delete j.force[task]; if(j.pins) delete j.pins[task];
+      recompute(); scrim.remove(); render(); toast("Manual date cleared. Approve to save."); });
     f.appendChild(r);
   }
   const c=el("button","btn","Cancel"); c.onclick=()=>scrim.remove();
   const ok=el("button","btn primary","Apply");
   ok.onclick=()=>{
-    j.force=j.force||{}; j.pins=j.pins||{};
-    if(di.value) j.force[task]=di.value; else delete j.force[task];
-    if(pi.value) j.pins[task]=pi.value; else delete j.pins[task];
-    recompute(); scrim.remove(); render(); toast("Updated. Review and approve to save.");
+    if(di.value===((j.force||{})[task]||"") && pi.value===((j.pins||{})[task]||"")){ scrim.remove(); return; }
+    const kind=di.value?"date":pi.value?"notbefore":"auto", to=di.value||pi.value||null;
+    askMoveReason(j.name+" "+task+(kind==="date"?" to "+fmt(to):kind==="notbefore"?", not before "+fmt(to):
+        ": let the scheduler decide"), why=>{
+      recordMove(j,task,row&&row.start,to,kind,why);
+      j.force=j.force||{}; j.pins=j.pins||{};
+      if(di.value) j.force[task]=di.value; else delete j.force[task];
+      if(pi.value) j.pins[task]=pi.value; else delete j.pins[task];
+      recompute(); scrim.remove(); render(); toast("Updated. Review and approve to save.");
+    });
   };
   f.append(c,ok); m.appendChild(f); scrim.appendChild(m);
   scrim.onclick=e=>{ if(e.target===scrim) scrim.remove(); };
@@ -2068,9 +2184,13 @@ function viewBoard(){
       const c=el("div","chip2"+(a.forced?" forced":""));
       c.style.setProperty("--jc",colorOf(a.id));
       c.appendChild(el("b",null,a.name));
-      a.items.forEach(it=>c.appendChild(el("i",null,
-        it.task+" \u00b7 "+it.men+(it.men===1?" man":" men")+
-        (it.part==="half day"?", half day":""))));
+      a.items.forEach(it=>{
+        c.appendChild(el("i",null,
+          it.task+" \u00b7 "+it.men+(it.men===1?" man":" men")+
+          (it.part==="half day"?", half day":"")));
+        const mn=moveNote(a.id,it.task);
+        if(mn) c.appendChild(el("span","mvnote",mn));
+      });
       if(App.canEdit && a.tasks.length){
         c.draggable=true;
         c.ondragstart=e=>{ c.classList.add("dragging");
@@ -2128,7 +2248,8 @@ function viewBoard(){
         const raw=e.dataTransfer.getData("text/plain"); if(!raw) return;
         const [jid,task]=raw.split("\u0001");
         if(wknd||blk){ toast("That day is not a working day"); return; }
-        moveTask(jid,task,dstr);
+        const jj=jobById(jid);
+        askMoveReason((jj?jj.name+" ":"")+task+" to "+fmt(dstr), why=>moveTask(jid,task,dstr,why));
       };
     }
     grid.appendChild(cell);
@@ -2565,6 +2686,7 @@ function openJob(id){
 
     j.contractStart=csI.value||null;
     j.permitDays=pmI.value===""?null:+pmI.value;
+    const oldF=j.force||{}, oldP=j.pins||{};
     j.overrides={}; j.pins={}; j.force={};
     for(const k of Object.keys(ovInputs)){
       if(ovInputs[k].value!=="") j.overrides[k]=+ovInputs[k].value;
@@ -2572,10 +2694,21 @@ function openJob(id){
       if(forceInputs[k] && forceInputs[k].value!=="") j.force[k]=forceInputs[k].value;
     }
     j.doneSteps=Object.keys(doneInputs).filter(k=>doneInputs[k].checked);
-    const i=jobIdx(j.id);
-    if(i<0) App.staged.jobs.push(j); else App.staged.jobs[i]=j;
-    recompute(); scrim.remove(); render();
-    toast("Schedule rebuilt. Review and approve to save.");
+    const finish=()=>{
+      const i=jobIdx(j.id);
+      if(i<0) App.staged.jobs.push(j); else App.staged.jobs[i]=j;
+      recompute(); scrim.remove(); render();
+      toast("Schedule rebuilt. Review and approve to save.");
+    };
+    // hand dates changed on an existing pool count as moves, so ask why
+    const moved=isNew?[]:Array.from(new Set(Object.keys(oldF).concat(Object.keys(oldP),Object.keys(j.force),Object.keys(j.pins))))
+      .filter(k=>(oldF[k]||"")!==(j.force[k]||"") || (oldP[k]||"")!==(j.pins[k]||""));
+    if(!moved.length) return finish();
+    askMoveReason(j.name+": "+moved.join(", "), why=>{
+      moved.forEach(k=>recordMove(j,k,startOf(j.id,k), j.force[k]||j.pins[k]||null,
+        j.force[k]?"date":j.pins[k]?"notbefore":"auto", why));
+      finish();
+    });
   };
   f.append(cancel,save); m.appendChild(f); scrim.appendChild(m);
   scrim.onclick=e=>{ if(e.target===scrim) scrim.remove(); };
@@ -3655,6 +3788,70 @@ function viewOutlook(){
   return v;
 }
 
+/* ---------- MOVED DATES (Owners and Admins) ----------
+   Every hand move with its reason, newest first, and the tasks it shifted. */
+function viewMoves(){
+  const v=document.createElement("div");
+  v.appendChild(el("h2",null,"Moved dates"));
+  const all=[];
+  App.staged.jobs.concat(App.archived||[]).forEach(j=>Object.keys(j.moves||{}).forEach(id=>
+    all.push(Object.assign({id, job:j.name}, j.moves[id]))));
+  all.sort((a,b)=>String(b.at).localeCompare(String(a.at)));
+  if(!all.length){ v.appendChild(el("p","note","No dates have been moved by hand yet.")); return v; }
+
+  const strip=el("div","strip");
+  MOVE_REASONS.forEach(r=>{
+    const n=all.filter(m=>m.reason===r).length;
+    const d=el("div","stat act"+(App.movesWhy===r?" warn":""));
+    d.appendChild(el("div","k",r)); d.appendChild(el("div","val",String(n)));
+    d.onclick=()=>{ App.movesWhy = App.movesWhy===r ? null : r; render(); };
+    strip.appendChild(d);
+  });
+  v.appendChild(strip);
+  if(App.movesWhy){
+    const clr=el("button","btn sm","Show all reasons");
+    clr.onclick=()=>{ App.movesWhy=null; render(); };
+    v.appendChild(clr); clr.style.marginBottom="10px";
+  }
+  const list=App.movesWhy?all.filter(m=>m.reason===App.movesWhy):all;
+
+  const w=el("div","tw"); const t=el("table");
+  t.innerHTML="<thead><tr><th>When</th><th>Pool and step</th><th>Date</th><th>Reason</th><th>By</th><th>Shifted</th></tr></thead>";
+  const tb=el("tbody");
+  list.forEach(m=>{
+    const tr=el("tr");
+    const when=m.at?new Date(m.at):null;
+    tr.innerHTML="<td>"+(when?esc(MON[when.getMonth()]+" "+when.getDate()+", "+
+        when.toLocaleTimeString([],{hour:"numeric",minute:"2-digit"})):"")+"</td>"+
+      "<td><b>"+esc(m.job)+"</b><br>"+esc(m.task)+"</td>"+
+      "<td>"+(m.from?esc(fmt(m.from)):"—")+" → "+esc(moveToText(m))+"</td>"+
+      "<td><span class='pill warn'>"+esc(m.reason)+"</span>"+(m.detail?"<div class='note' style='margin-top:4px'>"+esc(m.detail)+"</div>":"")+"</td>"+
+      "<td>"+esc(m.by||"")+"</td>";
+    const td=el("td");
+    if(!m.savedAt) td.appendChild(el("span","pill mut","Not approved yet"));
+    else if(!(m.caused||[]).length) td.appendChild(el("span","note","Nothing else moved"));
+    else{
+      const pools={};
+      m.caused.forEach(c=>(pools[c.job]=pools[c.job]||[]).push(c));
+      const names=Object.keys(pools);
+      const btn=el("button","btn sm",m.caused.length+" task"+(m.caused.length===1?"":"s")+
+        (names.length>1?" in "+names.length+" pools":""));
+      const ul=el("ul","shiftlist"); ul.hidden=true;
+      // one line per pool: how many of its steps moved, and its first one
+      names.forEach(p=>{
+        const cs=pools[p].sort((a,b)=>String(a.was).localeCompare(String(b.was))), c=cs[0];
+        ul.appendChild(el("li",null,p+": "+(cs.length>1?cs.length+" steps, starting with ":"")+
+          c.task+" "+fmt(c.was)+" → "+fmt(c.now)));
+      });
+      btn.onclick=()=>{ ul.hidden=!ul.hidden; };
+      td.append(btn,ul);
+    }
+    tr.appendChild(td); tb.appendChild(tr);
+  });
+  t.appendChild(tb); w.appendChild(t); v.appendChild(w);
+  return v;
+}
+
 /* ---------- MAIN RENDER ---------- */
 function render(){
   renderTabs(); renderPending();
@@ -3664,6 +3861,7 @@ function render(){
     v = App.tab==="board"?viewBoard():App.tab==="pipeline"?viewPipeline():
         App.tab==="schedule"?viewSchedule():App.tab==="calendar"?viewCalendar():
         App.tab==="outlook"?viewOutlook():App.tab==="assist"?viewAssist():
+        App.tab==="moves"?viewMoves():
         App.tab==="settings"?viewSettings():viewHelp();
   }catch(e){
     console.error(e);
@@ -3783,6 +3981,7 @@ const Downloads={
   App.canEdit = roles.indexOf("Owner")>=0 || roles.indexOf("Administrator")>=0;
   App.db=BoardDB.db; App.dl=Downloads; App.sample=null; App.user=null;
   document.getElementById("whoami").textContent = me.employee.name + (App.canEdit?"":" · View only");
+  App.meName = me.employee.name;   // recorded on each hand move
   try{ const v=await BoardDB.rpc("board_version"); BoardDB.setVersion(v.version); }catch(e){}
   await loadAll();
   render();

@@ -283,7 +283,7 @@ function showApp(){
 }
 
 /* ---------- Departments: a row of tabs, opening on that department's announcements ----------
-   Construction's other tabs (and conTabs, viewConstruction) live in con.js */
+   Construction's other tabs (and conTabs, viewConstruction) live in construction.js */
 const DEPTS=["construction","service","retail","hottubs"];
 function deptTabs(){
   return [["ann","Announcements"]].concat(App.tab==="construction"?conTabs():[]);

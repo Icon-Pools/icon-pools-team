@@ -1610,6 +1610,7 @@ function renderPending(){
   txt.innerHTML="<strong>Unsaved changes.</strong> "+
     (moved? moved+" task"+(moved===1?"":"s")+" would move. " : "The schedule has been rebuilt. ")+
     "Nothing is saved until you approve it."+
+    (App.remoteWaiting?"<br>Someone else saved changes too. They'll show here once you approve or discard.":"")+
     (ov.length?"<br><span class='overflag'>&#9888; Over crew on "+ov.length+" day"+(ov.length===1?"":"s")+": "+
       ov.slice(0,4).map(o=>esc(overText(o))).join("; ")+(ov.length>4?"; and "+(ov.length-4)+" more":"")+
       ". Approving will allow it.</span>":"");
@@ -1617,7 +1618,7 @@ function renderPending(){
   box.appendChild(el("div","grow"));
   const rev=el("button","btn sm","Review changes"); rev.onclick=openReview;
   const dis=el("button","btn sm ghost","Discard");
-  dis.onclick=()=>{ App.staged=clone(App.committed); recompute(); render(); toast("Changes discarded"); };
+  dis.onclick=()=>{ App.staged=clone(App.committed); recompute(); render(); toast("Changes discarded"); BoardDB_checkNow(); };
   box.appendChild(rev);
   if(App.canEdit){ const ap=el("button","btn sm primary","Approve and save");
     ap.onclick=approve; box.appendChild(ap); }
@@ -1626,7 +1627,7 @@ function renderPending(){
 }
 async function approve(){
   const ok=await saveAll();
-  if(ok){ render(); toast("Schedule approved and saved"); }
+  if(ok){ App.remoteWaiting=false; render(); toast("Schedule approved and saved"); BoardDB_checkNow(); }
 }
 function openReview(){
   const d=diffRows().sort((a,b)=>Math.abs(b.delta||0)-Math.abs(a.delta||0));
@@ -3652,6 +3653,7 @@ render();
 const EMBEDDED = window.self!==window.top;
 if(EMBEDDED) document.documentElement.classList.add("embedded");
 const goSignIn=()=>{ (EMBEDDED?window.top:window).location.replace("./"); };
+let BoardDB_checkNow=()=>{};   // set once live updates start; asks the server right away
 const BoardDB=(function(){
   const CFG=window.APP_CONFIG||{};
   let token=null; try{ token=JSON.parse(localStorage.getItem("ipt.token")); }catch(e){}
@@ -3672,8 +3674,9 @@ const BoardDB=(function(){
   let version=null;
   const snap=data=>({exists:data!=null, data:()=>data, metadata:{hasPendingWrites:false}});
   const write=async(op,path,data)=>{
-    const r=await rpc("board_write",{p_op:op, p_path:path, p_data:data==null?null:data});
-    version=r.version;
+    // The version isn't advanced here: someone else may have saved just before this
+    // write, and taking the new number would mark their change as already seen.
+    await rpc("board_write",{p_op:op, p_path:path, p_data:data==null?null:data});
   };
   const db={
     doc(path){ return {
@@ -3681,18 +3684,30 @@ const BoardDB=(function(){
       set: data=>write("set",path,data),
       update: data=>write("update",path,data),
       delete: ()=>write("delete",path),
-      // checks every 30 seconds (and when the screen comes back) whether anyone saved
+      // checks every 10 seconds (and when the screen comes back) whether anyone saved.
+      // If the screen can't take the update yet (cb returns false), the version is
+      // left alone so the update is retried on the next check instead of lost.
       onSnapshot(cb){
+        let busy=false;
         const tick=async()=>{
-          if(document.hidden) return;
+          if(document.hidden || busy) return;
+          busy=true;
           try{
             const r=await rpc("board_version");
-            if(version!==null && r.version!==version){ version=r.version; cb(snap({})); }
-            else version=r.version;
+            if(version===null) version=r.version;
+            else if(r.version!==version){
+              const seen=r.version;
+              if((await cb(snap({})))!==false) version=seen;
+            }
           }catch(e){}
+          busy=false;
         };
-        const h=setInterval(tick,30000);
-        document.addEventListener("visibilitychange",()=>{ if(!document.hidden) tick(); });
+        const h=setInterval(tick,10000);
+        const wake=()=>{ if(!document.hidden) tick(); };
+        document.addEventListener("visibilitychange",wake);
+        window.addEventListener("focus",wake);
+        window.addEventListener("pageshow",wake);
+        BoardDB_checkNow=tick;
         return ()=>clearInterval(h);
       }
     }; },
@@ -3733,11 +3748,13 @@ const Downloads={
   try{ const v=await BoardDB.rpc("board_version"); BoardDB.setVersion(v.version); }catch(e){}
   await loadAll();
   render();
-  App.db.doc("config/baseline").onSnapshot(snap=>{
+  App.db.doc("config/baseline").onSnapshot(async snap=>{
     if(!snap.exists) return;
     if(snap.metadata && snap.metadata.hasPendingWrites) return;
-    if(App.canEdit && isDirty()) return;   // never clobber unreviewed local edits (viewers have none)
-    loadAll().then(render);
+    // never clobber unreviewed local edits; returning false retries once they're approved or discarded
+    if(App.canEdit && isDirty()){ App.remoteWaiting=true; renderPending(); return false; }
+    App.remoteWaiting=false;
+    await loadAll(); render(); toast("Board updated");
   },()=>{});
 })();
 if("serviceWorker" in navigator && location.protocol==="https:"){

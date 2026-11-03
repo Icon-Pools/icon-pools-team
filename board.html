@@ -764,10 +764,9 @@ function runSchedule(jobs, cfg, blocked, crewBy, coldBy){
 
   /* ---- pass 2: forced dates, then heavy pours, then everything else ---- */
   reset(); pre={};
-  // stage 0 - dates you forced by hand. They are recorded here but take crew
-  // only on that pool's own turn, so a hand move never bumps work planned
-  // for pools ahead of it. If that puts a day over the crew, the day is
-  // flagged for approval instead of quietly moving someone else.
+  // stage 0 - dates set by hand come first: they take their crew, dig and Casey
+  // before any other pool or rule, and everything else is planned around them.
+  // If hand-set steps alone go past the crew limit, the day is flagged.
   ordered.forEach(job=>{
     const f=job.force||{};
     taskList(job).forEach(t=>{
@@ -777,6 +776,11 @@ function runSchedule(jobs, cfg, blocked, crewBy, coldBy){
       const i=idxOnAfter(f[t.t]);
       const {n}=slotsNeeded(job,t,i);
       const slots=[]; for(let k=0;k<n && i+k<N;k++) slots.push(i+k);
+      const withCasey = t.t==="Liner Install" && S.caseyLiner;
+      takeAll(slots, withCasey?Math.max(0,t.m-1):t.m, job.id);
+      if(t.t==="Excavation" && S.oneDig) slots.forEach(k=>{ lock.dig[k]=1; });
+      if(withCasey) slots.forEach(k=>{ casey[k]=1; });
+      if(t.t==="Pool Bottom" || /plumb/i.test(t.t)) slots.forEach(k=>{ pbSlot[k]=1; });
       pre[K(job.id,t.t)]={slots,forced:true};
     });
   });
@@ -993,9 +997,8 @@ function runSchedule(jobs, cfg, blocked, crewBy, coldBy){
         if(claim.forced || (first>=cur && !bfOut)){
           const note=claim.forced?("Moved here by you"+
             (first<cur?". Earlier steps are not finished by then.":"")):"";
-          if(claim.forced) takeAll(claim.slots,t.m,job.id);
-          if(needLock) holdLock(needLock,claim.slots);
-          if(t._cz) holdCasey(claim.slots);
+          // hand-set steps already hold their crew, dig and Casey from stage 0
+          if(!claim.forced){ if(needLock) holdLock(needLock,claim.slots); if(t._cz) holdCasey(claim.slots); }
           const r=mk(job,t,claim.slots,"LABOR",claim.forced?"Forced":"Scheduled",note,t);
           r.forced=!!claim.forced; if(t._cz) r.casey=true; out.push(r);
           if(!firstRow) firstRow=r;
@@ -1405,23 +1408,49 @@ async function saveAll(){
   try{
     // Save only what changed on this screen, so an older screen can never write
     // stale copies over someone else's newer changes.
-    const strip=j=>{ const b=clone(j); delete b._meta; return JSON.stringify(b,Object.keys(b).sort()); };
+    // Compare whole pools, nested dates and to-dos included, with keys in a fixed order.
+    // (Sorting only the top-level keys used to hide changes inside force, pins and done.)
+    const stable=v=>Array.isArray(v)?"["+v.map(stable).join(",")+"]"
+      : (v&&typeof v==="object")?"{"+Object.keys(v).sort().filter(k=>v[k]!==undefined)
+          .map(k=>JSON.stringify(k)+":"+stable(v[k])).join(",")+"}"
+      : JSON.stringify(v===undefined?null:v);
+    const strip=j=>{ const b=clone(j); delete b._meta; return stable(b); };
     const was={}; App.committed.jobs.forEach(j=>was[j.id]=strip(j));
     const changed=App.staged.jobs.filter(j=>was[j.id]!==strip(j));
     const ids=new Set(App.staged.jobs.map(j=>j.id));
     const removed=App.committed.jobs.filter(j=>!ids.has(j.id));
-    // has anyone else changed the same pools since this screen loaded?
-    const clash=[];
-    for(const j of changed.concat(removed)){
-      if(!(j.id in was)) continue;
-      const snap=await App.db.doc("jobs/"+j.id).get();
-      if(snap.exists){ const cur=Object.assign({id:j.id},snap.data()); if(strip(cur)!==was[j.id]) clash.push(j.name||j.id); }
-    }
-    if(clash.length && !confirm("Someone else changed "+clash.join(", ")+" since you opened the board.\n\n"+
-        "OK saves your version over theirs. Cancel stops so you can refresh first."))
-      return false;
+    // Apply only the fields changed on this screen on top of the latest saved copy,
+    // so a newer change made elsewhere is kept and no pop-up is needed.
+    const old={}; App.committed.jobs.forEach(j=>old[j.id]=j);
+    const same=(a,b)=>JSON.stringify(a===undefined?null:a)===JSON.stringify(b===undefined?null:b);
     for(const j of removed) await App.db.doc("jobs/"+j.id).delete();
-    for(const j of changed){ const body=clone(j); delete body.id; delete body._meta; await App.db.doc("jobs/"+j.id).set(body); }
+    for(const j of changed){
+      const mine=clone(j); delete mine.id; delete mine._meta;
+      const before=old[j.id];
+      let body=mine;
+      if(before){
+        const snap=await App.db.doc("jobs/"+j.id).get();
+        if(snap.exists){
+          const latest=snap.data(); body=clone(latest);
+          const keys=new Set(Object.keys(mine).concat(Object.keys(before)));
+          keys.forEach(k=>{
+            if(k==="id"||k==="_meta") return;
+            if(same(mine[k],before[k])) return;                 // not touched here: keep the latest
+            const isMap=v=>v&&typeof v==="object"&&!Array.isArray(v);
+            if(isMap(mine[k]) && isMap(before[k]) && isMap(latest[k])){
+              const m=clone(latest[k]);                          // merge maps (hand dates, to-dos) key by key
+              new Set(Object.keys(mine[k]).concat(Object.keys(before[k]))).forEach(q=>{
+                if(same(mine[k][q],before[k][q])) return;
+                if(mine[k][q]===undefined) delete m[q]; else m[q]=mine[k][q];
+              });
+              body[k]=m;
+            } else if(mine[k]===undefined) delete body[k];
+            else body[k]=mine[k];
+          });
+        }
+      }
+      await App.db.doc("jobs/"+j.id).set(body);
+    }
     if(JSON.stringify(App.staged.cfg||{})!==JSON.stringify(App.committed.cfg||{}))
       await App.db.doc("config/settings").set({cfg:App.staged.cfg||{}});
     if(JSON.stringify(App.staged.cal||{})!==JSON.stringify(App.committed.cal||{}) ||
@@ -1893,9 +1922,18 @@ function capFor(d){
 function caseyIn(d,total){ return total>baseCap(d)+0.01 && total<=capFor(d)+0.01; }
 function overText(o){ return wdShort(o.date)+" "+fmt(o.date)+": "+(o.note||(o.total+" men, crew is "+o.cap)); }
 function wdShort(d){ return ["Sun","Mon","Tue","Wed","Thu","Fri","Sat"][sd(d).getDay()]; }
+function clearLaterDates(j,task,date){
+  // later steps of this pool keep a hand date only if it still comes after the moved step
+  const steps=taskList(j).map(t=>t.t); const at=steps.indexOf(task);
+  if(at<0) return;
+  steps.slice(at+1).forEach(t=>{
+    ["force","pins"].forEach(f=>{ if(j[f] && j[f][t] && diffD(j[f][t],date)<0) delete j[f][t]; });
+  });
+}
 function moveTask(jobId,task,date){
   const j=jobById(jobId); if(!j) return;
   j.force=j.force||{}; j.force[task]=date;
+  clearLaterDates(j,task,date);
   recompute(); render();
   const row=App.sched.rows.find(r=>r.jobId===jobId&&r.task===task);
   const hit=overCrewDays().filter(o=>row&&row.days&&row.days.indexOf(o.date)>=0);
@@ -3210,7 +3248,7 @@ const ASSIST_TOOLS=()=>([
      const t=findTask(j,step); if(!t) return {error:"No step like "+step};
      const id=j.id;
      return propose(j.name+": "+t+" moved to "+fmt(date),
-       st=>{ const q=sj(st,id); q.force=q.force||{}; q.force[t]=date; if(q.pins) delete q.pins[t];
+       st=>{ const q=sj(st,id); q.force=q.force||{}; q.force[t]=date; if(q.pins) delete q.pins[t]; clearLaterDates(q,t,date);
              if(t==="Excavation" && q.holdUntil && diffD(date,q.holdUntil)<0) delete q.holdUntil; });
    }},
   {name:"hold_step_until", description:"Stop a step starting before a date.",

@@ -247,6 +247,7 @@ async function logOut(){
   if(!confirm("Log out on this device? You'll need your PIN to sign back in.")) return;
   const tok=App.token;
   signedOut("You're logged out.");
+  if(typeof pushForgetDevice==="function") await pushForgetDevice(tok);   // stop this person's notifications here
   try{ await rpc("logout",{p_token:tok}); }catch(e){}
 }
 function signedOut(msg){
@@ -277,9 +278,11 @@ function showApp(){
   $("view").hidden=onBoard;
   const sel=$("tabs").querySelector('[aria-selected="true"]');
   if(sel) sel.scrollIntoView({block:"nearest",inline:"nearest"});
-  if(onBoard) return;
-  if(inDept) viewDept();
-  else if(App.tab==="admin") viewAdmin(); else viewHome();
+  if(!onBoard){
+    if(inDept) viewDept();
+    else if(App.tab==="admin") viewAdmin(); else viewHome();
+  }
+  if(typeof afterShowApp==="function") afterShowApp();   // notify.js: "new" dots and notifications
 }
 
 /* ---------- Departments: a row of tabs, opening on that department's announcements ----------
@@ -346,7 +349,7 @@ function installCard(){
 
 // Home: the general announcements, and nothing else (plus how to install, until it is)
 function viewHome(){
-  setView('<h2>Announcements</h2><div id="annHost"></div>'+installCard());
+  setView('<h2>Announcements</h2><div id="annHost"></div><div id="notifyHost"></div>'+installCard());
   annBlock($("annHost"),"general");
   const ib=$("installBtn");
   if(ib) ib.onclick=async()=>{
@@ -428,6 +431,7 @@ function openEditor(emp){
        '<button class="btn primary" id="sSave">Add employee</button></div>';
   }else if(!readOnly){
     h+='<div class="row" style="justify-content:flex-end"><button class="btn primary" id="sSave">Save changes</button></div>'+
+       '<div id="fNotify"></div>'+
        '<hr><h3 style="font-size:16px;margin-bottom:6px">PIN</h3>'+
        '<p class="muted small" style="margin:0 0 10px">'+
        (emp.locked?"<b>Locked</b> after too many wrong tries. Setting a new PIN unlocks it. ":
@@ -458,6 +462,7 @@ function openEditor(emp){
   if($("sSave")) $("sSave").onclick=()=>saveEmployee(emp);
   if($("sPin")) $("sPin").onclick=()=>setPin(emp);
   if($("sRemove")) $("sRemove").onclick=()=>removeEmployee(emp);
+  if($("fNotify") && typeof notifyEditor==="function") notifyEditor(emp,$("fNotify"));
   if(isNew) $("fName").focus();
 }
 function pinField(label){

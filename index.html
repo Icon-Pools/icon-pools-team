@@ -162,6 +162,10 @@ label.f textarea{resize:vertical; font-family:inherit; line-height:1.4}
 .tbl .n{text-align:right; white-space:nowrap; font-variant-numeric:tabular-nums}
 .tbl .dayrow td{font-weight:700; background:var(--sunk)}
 .work{white-space:pre-wrap; margin-top:2px}
+/* "new" dot on tabs with unread announcements */
+nav button.has-new::after{content:""; display:inline-block; width:8px; height:8px; border-radius:50%;
+  background:var(--oxide); margin-left:5px; vertical-align:2px}
+.notify-on{margin:4px 0 14px}
 .tbl.click tr{cursor:pointer}
 .tbl.click tr:active td{background:var(--sunk)}
 .tbl tr.void td{color:var(--faint); text-decoration:line-through}
@@ -235,5 +239,6 @@ legend{font-size:13.5px; color:var(--slate); font-weight:600; margin-bottom:6px;
 <script src="app.js"></script>
 <script src="construction.js"></script>
 <script src="ann.js"></script>
+<script src="notify.js"></script>
 </body>
 </html>

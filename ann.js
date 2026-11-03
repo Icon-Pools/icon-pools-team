@@ -64,9 +64,11 @@ function annEditor(dept,a,refresh){
   $("anSave").onclick=()=>withBusy($("anSave"),async()=>{
     const title=$("anTitle").value.trim(), body=$("anBody").value;
     if(!title) return alert("Give the announcement a title.");
+    let posted=null;
     if(a) await rpc("ann_edit",{p_token:App.token, p_id:a.id, p_title:title, p_body:body});
-    else await rpc("ann_add",{p_token:App.token, p_dept:dept, p_title:title, p_body:body});
+    else posted=await rpc("ann_add",{p_token:App.token, p_dept:dept, p_title:title, p_body:body});
     closeSheet(); toast(a?"Announcement saved":"Announcement posted"); refresh();
+    if(posted && typeof notifyAnnouncement==="function") notifyAnnouncement(posted.id);   // notify.js
   });
 }
 async function annPast(dept,refreshMain){

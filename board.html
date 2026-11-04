@@ -224,6 +224,8 @@ p.mvnote{font-size:13px; margin:-6px 0 12px}
 .reasons input{width:18px; height:18px; accent-color:var(--water)}
 .shiftlist{margin:6px 0 0 16px; padding:0; font-size:12.5px}
 .shiftlist[hidden]{display:none}
+.chip2 i.step{display:block; cursor:pointer; text-decoration:underline dotted; text-underline-offset:2px}
+.reasons .btn{margin-bottom:6px}
 @media (max-width:820px){
   .dowrow{display:none}
   .cal{grid-template-columns:repeat(2,1fr)}
@@ -1975,6 +1977,24 @@ function askMoveReason(what,done){
   scrim.onclick=e=>{ if(e.target===scrim) scrim.remove(); };
   document.body.appendChild(scrim);
 }
+// a pool with two steps on one day: ask which one
+function pickStep(poolName,tasks,done){
+  const scrim=el("div","scrim"), m=el("div","modal");
+  m.style.maxWidth="400px";
+  const h=el("div","mhead"); h.appendChild(el("h3",null,poolName+": which step?"));
+  h.appendChild(el("div","grow"));
+  const x=el("button","btn sm ghost","Close"); x.onclick=()=>scrim.remove(); h.appendChild(x);
+  m.appendChild(h);
+  const b=el("div","mbody"), list=el("div","reasons");
+  tasks.forEach(t=>{
+    const btn=el("button","btn",t); btn.style.textAlign="left";
+    btn.onclick=()=>{ scrim.remove(); done(t); };
+    list.appendChild(btn);
+  });
+  b.appendChild(list); m.appendChild(b); scrim.appendChild(m);
+  scrim.onclick=e=>{ if(e.target===scrim) scrim.remove(); };
+  document.body.appendChild(scrim);
+}
 function startOf(jobId,task){
   const r=App.sched.rows.find(x=>x.jobId===jobId&&x.task===task&&x.start); return r?r.start:null;
 }
@@ -2184,21 +2204,35 @@ function viewBoard(){
       const c=el("div","chip2"+(a.forced?" forced":""));
       c.style.setProperty("--jc",colorOf(a.id));
       c.appendChild(el("b",null,a.name));
+      const editable=App.canEdit && a.tasks.length>0;
+      const several=editable && a.tasks.length>1;
       a.items.forEach(it=>{
-        c.appendChild(el("i",null,
+        const line=el("i",null,
           it.task+" \u00b7 "+it.men+(it.men===1?" man":" men")+
-          (it.part==="half day"?", half day":"")));
+          (it.part==="half day"?", half day":""));
+        // when a pool has two steps on one day, each step line can be moved on its own
+        if(several && a.tasks.indexOf(it.task)>=0){
+          line.className="step";
+          line.draggable=true;
+          line.ondragstart=e=>{ e.stopPropagation(); c.classList.add("dragging");
+            e.dataTransfer.setData("text/plain", a.id+"\u0001"+it.task);
+            e.dataTransfer.effectAllowed="move"; };
+          line.ondragend=()=>c.classList.remove("dragging");
+          line.onclick=e=>{ e.stopPropagation(); taskMenu(a.id,it.task); };
+          line.title="Drag to move "+it.task+", or tap to pick a date";
+        }
+        c.appendChild(line);
         const mn=moveNote(a.id,it.task);
         if(mn) c.appendChild(el("span","mvnote",mn));
       });
-      if(App.canEdit && a.tasks.length){
+      if(editable){
         c.draggable=true;
         c.ondragstart=e=>{ c.classList.add("dragging");
-          e.dataTransfer.setData("text/plain", a.id+"\u0001"+a.tasks[0]);
+          e.dataTransfer.setData("text/plain", a.id+"\u0001"+a.tasks.join("\u0002"));
           e.dataTransfer.effectAllowed="move"; };
         c.ondragend=()=>c.classList.remove("dragging");
-        c.onclick=()=>taskMenu(a.id,a.tasks[0]);
-        c.title="Drag to move, or tap to pick a date";
+        c.onclick=()=>several ? pickStep(a.name,a.tasks,t=>taskMenu(a.id,t)) : taskMenu(a.id,a.tasks[0]);
+        c.title=several?"Tap a step to move it, or drag it":"Drag to move, or tap to pick a date";
       }
       cell.appendChild(c);
     });
@@ -2246,10 +2280,11 @@ function viewBoard(){
       cell.ondrop=e=>{
         e.preventDefault(); cell.classList.remove("drop");
         const raw=e.dataTransfer.getData("text/plain"); if(!raw) return;
-        const [jid,task]=raw.split("\u0001");
+        const [jid,list]=raw.split("\u0001"), tasks=list.split("\u0002");
         if(wknd||blk){ toast("That day is not a working day"); return; }
         const jj=jobById(jid);
-        askMoveReason((jj?jj.name+" ":"")+task+" to "+fmt(dstr), why=>moveTask(jid,task,dstr,why));
+        const go=task=>askMoveReason((jj?jj.name+" ":"")+task+" to "+fmt(dstr), why=>moveTask(jid,task,dstr,why));
+        if(tasks.length>1) pickStep(jj?jj.name:jid, tasks, go); else go(tasks[0]);
       };
     }
     grid.appendChild(cell);

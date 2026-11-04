@@ -217,13 +217,15 @@ tr.nextslot td{background:var(--paper2, rgba(127,127,127,.07)); border-top:1px d
 .overbox{border:2px solid var(--oxide); border-radius:4px; padding:8px 11px; margin-bottom:12px; font-size:13.5px}
 .overbox ul{margin:5px 0 5px 18px; padding:0}
 /* move reasons */
-.mvnote{display:block; font-size:11px; line-height:1.3; color:var(--dig); font-weight:600; margin:1px 0 2px}
-p.mvnote{font-size:13px; margin:-6px 0 12px}
 .reasons{display:flex; flex-direction:column; gap:2px}
 .reasons label.cb{padding:8px 0; align-self:stretch}
 .reasons input{width:18px; height:18px; accent-color:var(--water)}
 .shiftlist{margin:6px 0 0 16px; padding:0; font-size:12.5px}
 .shiftlist[hidden]{display:none}
+/* crew calendar on phones: skip days with no work (weekends, days off) */
+@media (max-width:820px){ .crewview .cell2.off.empty{display:none} .crewview .cell2{min-height:0} }
+.crewview .chip2 b{font-size:14px} .crewview .chip2 i{font-size:13px}
+.chip2 i{display:block}   /* two steps on one day: one per line */
 .chip2 i.step{display:block; cursor:pointer; text-decoration:underline dotted; text-underline-offset:2px}
 .reasons .btn{margin-bottom:6px}
 @media (max-width:820px){
@@ -1946,7 +1948,7 @@ function clearLaterDates(j,task,date){
    Every hand move asks why. The reason is kept on the pool as j.moves (a map by
    id, so two people's moves merge on save). When the change is approved, the
    schedule is rebuilt without the hand moves to find which other tasks shifted
-   only because of them; those get j.shifted notes shown on the calendar. */
+   only because of them; they're listed on the move, for the Moved dates tab. */
 const MOVE_REASONS=["Better flow","Outside issue","Internal issue","Weather delay","Other"];
 function askMoveReason(what,done){
   const scrim=el("div","scrim"), m=el("div","modal");
@@ -2037,22 +2039,8 @@ function stampMoves(){
     return {jobId:jid, job:jj?jj.name:jid, task, was:altMap[k], now:cur[k]};
   });
   const at=new Date().toISOString();
-  const why=pend.map(p=>p.j.name+" "+p.m.task+" ("+p.m.reason.toLowerCase()+")").join("; ");
   pend.forEach(p=>{ p.m.savedAt=at; p.m.caused=caused; });
-  caused.forEach(c=>{ const jj=jobById(c.jobId); if(!jj) return;
-    jj.shifted=jj.shifted||{}; jj.shifted[c.task]={was:c.was, now:c.now, at, why}; });
   return ()=>pend.forEach(p=>{ delete p.m.savedAt; delete p.m.caused; });
-}
-// the note shown on a calendar task: moved by hand, or shifted because of another move
-function moveNote(jobId,task){
-  const j=jobById(jobId); if(!j) return "";
-  const hand=Object.values(j.moves||{}).filter(m=>m.task===task)
-    .sort((a,b)=>String(a.at).localeCompare(String(b.at))).pop();
-  if(hand && hand.kind!=="auto" && ((j.force||{})[task]===hand.to || (j.pins||{})[task]===hand.to))
-    return "Moved by hand: "+hand.reason.toLowerCase()+(hand.detail?" ("+hand.detail+")":"");
-  const s=(j.shifted||{})[task];
-  if(s && startOf(jobId,task)===s.now) return "Shifted from "+fmt(s.was)+": "+s.why;
-  return "";
 }
 
 function moveTask(jobId,task,date,why){
@@ -2079,8 +2067,6 @@ function taskMenu(jobId,task){
   const b=el("div","mbody");
   b.appendChild(el("p","sub","Currently "+(row&&row.start?fmt(row.start)+" to "+fmt(row.finish):"not scheduled")+
     ", "+(row?row.men:"?")+" men."+((j.force||{})[task]?" You moved this one by hand.":"")));
-  const mn=moveNote(jobId,task);
-  if(mn) b.appendChild(el("p","mvnote",mn));
   const g=el("div","fgrid");
   const mk=(l,n)=>{const w=el("label","f"); w.appendChild(el("span",null,l)); w.appendChild(n); return w;};
   const di=el("input"); di.type="date"; di.value=(j.force||{})[task]||(row&&row.start)||todayStr();
@@ -2178,7 +2164,7 @@ function viewBoard(){
   }
   v.appendChild(ctl);
 
-  const wrap=el("div","calwrap");
+  const wrap=el("div","calwrap"+(crewOnly?" crewview":""));
   const dr=el("div","dowrow");
   ["Monday","Tuesday","Wednesday","Thursday","Friday","Saturday","Sunday"]
     .forEach(d=>dr.appendChild(el("div",null,d)));
@@ -2191,25 +2177,29 @@ function viewBoard(){
     const A=dayAssignments(dstr);
     const cap=crewOn(dstr);
     const over=A.total>capFor(dstr)+0.001;
-    const cell=el("div","cell2"+((wknd||blk)?" off":"")+(over?" over":dstr===todayStr()?" today":""));
+    // crew view: a day with no work at all (weekends, days off) can be hidden on phones
+    const empty=!A.list.length && (crewOnly || !A.casey.length);
+    const cell=el("div","cell2"+((wknd||blk)?" off":"")+(over&&!crewOnly?" over":dstr===todayStr()?" today":"")+
+      (empty?" empty":""));
     const hd=el("div","c2h");
     hd.appendChild(el("span","d",(d.getMonth()+1)+"/"+d.getDate()));
     if(blk) hd.appendChild(el("span","t",blk.type==="rain"?"Rain":blk.type==="holiday"?"Holiday":
       blk.type==="reserve"?"Reserve":"Off"));
     else if(App._cold && App._cold[dstr]) hd.appendChild(el("span","t","Too cold to pour"));
-    else if(cap!==crew) hd.appendChild(el("span","t",cap+" men"));
+    else if(cap!==crew && !crewOnly) hd.appendChild(el("span","t",cap+" men"));
     cell.appendChild(hd);
 
     A.list.forEach(a=>{
-      const c=el("div","chip2"+(a.forced?" forced":""));
+      const c=el("div","chip2"+(a.forced&&!crewOnly?" forced":""));
       c.style.setProperty("--jc",colorOf(a.id));
       c.appendChild(el("b",null,a.name));
       const editable=App.canEdit && a.tasks.length>0;
       const several=editable && a.tasks.length>1;
       a.items.forEach(it=>{
-        const line=el("i",null,
-          it.task+" \u00b7 "+it.men+(it.men===1?" man":" men")+
-          (it.part==="half day"?", half day":""));
+        // crew see the step alone; the office also sees how many men
+        const line=el("i",null, crewOnly
+          ? it.task+(it.part==="half day"?" \u00b7 half day":"")
+          : it.task+" \u00b7 "+it.men+(it.men===1?" man":" men")+(it.part==="half day"?", half day":""));
         // when a pool has two steps on one day, each step line can be moved on its own
         if(several && a.tasks.indexOf(it.task)>=0){
           line.className="step";
@@ -2222,8 +2212,6 @@ function viewBoard(){
           line.title="Drag to move "+it.task+", or tap to pick a date";
         }
         c.appendChild(line);
-        const mn=moveNote(a.id,it.task);
-        if(mn) c.appendChild(el("span","mvnote",mn));
       });
       if(editable){
         c.draggable=true;
@@ -2236,7 +2224,7 @@ function viewBoard(){
       }
       cell.appendChild(c);
     });
-    A.casey.forEach(r=>{
+    if(!crewOnly) A.casey.forEach(r=>{
       const c=el("div","chip2 casey");
       c.appendChild(el("b",null,"Casey"));
       c.appendChild(el("i",null,r.job+": "+r.task));
@@ -2256,8 +2244,7 @@ function viewBoard(){
         "<i>payment due on "+esc(r.task)+"</i>";
       cell.appendChild(c);
     });
-    if(!A.list.length && !A.casey.length)
-      cell.appendChild(el("div","c2f",(wknd||blk)?"":"Crew free"));
+    if(empty) cell.appendChild(el("div","c2f",(wknd||blk)?"":crewOnly?"Nothing scheduled":"Crew free"));
 
     if(!wknd && !blk && !crewOnly){
       const bar=el("div","bar");

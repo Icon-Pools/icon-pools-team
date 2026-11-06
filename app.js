@@ -122,6 +122,9 @@ async function showNames(msg){
   });
   h+='</ul>';
   if(!App.names.length) h+='<p class="muted">No employees yet.</p>';
+  // only people with a PIN are listed (see sql/06_signin_list.sql)
+  if(!App.needsSetup) h+='<p class="muted small" style="margin-top:12px">Don\'t see your name? '+
+    'Ask an Owner or Administrator to set your PIN.</p>';
   setView(h);
   $("view").querySelectorAll(".names button").forEach(b=>{
     b.onclick=()=>pickName(App.names[+b.dataset.i]);

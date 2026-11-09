@@ -542,6 +542,9 @@ function taskList(job){
     if(job.heater2 && t.heat2) t.d=Math.round((t.d+t.heat2)*1000)/1000;
     const ov=(job.overrides||{})[t.t];
     if(ov!=null && ov!=="" && !isNaN(+ov)) t.d=+ov;
+    // a different crew size for one step on this pool (e.g. 2 men instead of 3)
+    const mo=(job.menOverrides||{})[t.t];
+    if(t.c==="LABOR" && mo!=null && mo!=="" && +mo>0) t.m=+mo;
     if(t.c==="LABOR" && !t.am && t.d>=2) t.sp=1;
     if(t.c==="LABOR" && !t.sp && CARRY_STEPS.indexOf(t.t)>=0) t.carry=1;
     out.push(t);
@@ -890,11 +893,15 @@ function runSchedule(jobs, cfg, blocked, crewBy, coldBy){
     delete job._bfOver; delete job._bfWhy;   // scratch flags, never saved
     if(isLinePool(job) && !job._free && !job.openEarly){ const fs=firstStart(res); if(fs && diffD(fs,lineOpen)>0) lineOpen=fs; }
     delete job._lineFrom;
-    if(shift>0 && job._meta) job._meta.reason = why.indexOf("tight:")===0
-      ? "Started "+shift+" days later so "+why.slice(6)
+    // a note only when the pool starts after its promised date (the end of its window,
+    // or its target start when it has no window), counted from that promise
+    const promised=job.windowEnd||job.targetStart, fs0=firstStart(res);
+    const late=(promised && fs0) ? diffD(fs0,promised) : 0;
+    if(shift>0 && late>0 && job._meta) job._meta.reason = why.indexOf("tight:")===0
+      ? "Starts "+late+" days after its promised date so "+why.slice(6)
       : why==="open"
-      ? "Started "+shift+" days later: "+S.maxOpen+" pools were already open"
-      : "Started "+shift+" days later so the crew would not leave it sitting mid-build";
+      ? "Starts "+late+" days after its promised date: "+S.maxOpen+" pools were already open"
+      : "Starts "+late+" days after its promised date so the crew would not leave it sitting mid-build";
     if(job.type!=="oneoff") segsOf(res).forEach(g=>spans.push(g));
     rows.push(...res);
   });
@@ -3851,6 +3858,8 @@ function viewMoves(){
       "<td>"+esc(m.by||"")+"</td>";
     const td=el("td");
     if(!m.savedAt) td.appendChild(el("span","pill mut","Not approved yet"));
+    // moves made together as one plan list their knock-on shifts once, on one of the moves
+    else if(m.see) td.appendChild(el("span","note","Listed with "+m.see));
     else if(!(m.caused||[]).length) td.appendChild(el("span","note","Nothing else moved"));
     else{
       const pools={};

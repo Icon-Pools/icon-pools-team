@@ -545,4 +545,5 @@ async function boot(){
 if("serviceWorker" in navigator && location.protocol==="https:"){
   window.addEventListener("load",()=>navigator.serviceWorker.register("sw.js").catch(()=>{}));
 }
-boot();
+// wait until construction.js, ann.js and notify.js have loaded too
+if(document.readyState==="loading") document.addEventListener("DOMContentLoaded",boot); else boot();

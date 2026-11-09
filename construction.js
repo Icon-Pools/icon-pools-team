@@ -327,8 +327,9 @@ function entryHours(t){ return t.voided?0:hoursBetween(t.check_in,t.check_out); 
 function entryFlags(t){
   const f=[];
   if(t.voided) f.push('<span class="pill bad">Removed</span>');
-  else if(!t.check_out) f.push('<span class="pill warn">Still checked in</span>');
+  else if(!t.check_out) f.push('<span class="pill warn">Still checked in · tap to check out</span>');
   if(t.out_by_hand) f.push('<span class="pill warn">Out time typed</span>');
+  if(t.office_out && !t.voided) f.push('<span class="pill warn">Checked out by '+esc(t.office_out)+'</span>');
   if(t.changes>0 && !t.voided) f.push('<span class="pill">Changed</span>');
   return f.join(" ");
 }
@@ -362,6 +363,7 @@ function drawHours(rep){
 }
 async function fixEntry(t){
   const ro=t.voided;
+  if(!ro && !t.check_out) return officeCheckOut(t);
   openSheet(t.employee+" · "+t.job,
     (t.work?'<div class="card" style="margin:0 0 12px"><div class="muted small">Work done</div>'+esc(t.work)+'</div>':'')+
     (ro?'<div class="notice warn">This entry was removed and doesn\'t count toward hours.</div>':
@@ -385,15 +387,51 @@ async function fixEntry(t){
       closeSheet(); toast("Entry removed"); viewHours();
     });
   }
+  loadEntryHistory(t);
+}
+async function loadEntryHistory(t){
   let hist;
   try{ hist=await rpc("time_history",{p_token:App.token, p_id:t.id}); }catch(e){ return; }
   const word={check_in:"Checked in",check_out:"Checked out",check_out_by_hand:"Typed their leave time",
-              fixed:"Fixed",added:"Added by hand",voided:"Removed"};
+              fixed:"Fixed",added:"Added by hand",voided:"Removed",office_out:"Checked out by office"};
   const span=x=>x?(tWhen(x.check_in)+" – "+(x.check_out?tWhen(x.check_out):"open")):"";
   if($("fHist")) $("fHist").innerHTML='<ol class="hist">'+hist.map(x=>
     '<li><b>'+esc(word[x.action]||x.action)+'</b> by '+esc(x.by||"someone")+' <span class="muted small">'+esc(tWhen(x.at))+'</span>'+
     (x.action==="fixed"?'<div class="small">'+esc(span(x.before))+' &rarr; '+esc(span(x.after))+'</div>':'')+
-    (x.note?'<div class="small muted">'+esc(x.note)+'</div>':'')+'</li>').join("")+'</ol>';
+    (x.action==="office_out"&&x.after?'<div class="small">Left at '+esc(tWhen(x.after.check_out))+'</div>':'')+
+    (x.note?'<div class="small muted">Reason: '+esc(x.note)+'</div>':'')+'</li>').join("")+'</ol>';
+}
+/* someone forgot to check out: an Owner or Administrator closes the entry, with a reason */
+function officeCheckOut(t){
+  openSheet(t.employee+" · "+t.job,
+    '<div class="notice warn">'+esc(t.employee)+' is still checked in to '+esc(t.job)+' since '+esc(tWhen(t.check_in))+'.</div>'+
+    '<label class="f">Checked in<input type="datetime-local" id="oIn" value="'+toInput(t.check_in)+'"></label>'+
+    '<label class="f">Time they left<input type="datetime-local" id="oOut"></label>'+
+    '<label class="f">Work done <span class="muted small">(optional)</span><textarea id="oWork" rows="3" maxlength="2000"></textarea></label>'+
+    '<label class="f">Reason<input id="oWhy" maxlength="200" placeholder="e.g. Forgot to check out"></label>'+
+    '<p class="muted small">Your name and the reason are saved in this entry\'s history.</p>'+
+    '<div class="row" style="justify-content:space-between"><button class="btn danger" id="oVoid">Remove entry</button>'+
+    '<button class="btn primary" id="oSave">Check them out</button></div>'+
+    '<hr><h3 style="font-size:16px;margin-bottom:6px">History</h3><div id="fHist">'+loading()+'</div>');
+  $("oSave").onclick=()=>withBusy($("oSave"),async()=>{
+    const why=$("oWhy").value.trim(), vin=$("oIn").value, vout=$("oOut").value;
+    if(!vin) return alert("Enter the check-in time.");
+    if(!vout) return alert("Enter the time they left.");
+    if(new Date(vout)<=new Date(vin)) return alert("The time they left has to be after they checked in.");
+    if(new Date(vout)>Date.now()+120000) return alert("The time they left can't be in the future.");
+    if(!why) return alert("Add a short reason for checking them out.");
+    if(vin!==toInput(t.check_in))
+      await rpc("time_fix",{p_token:App.token, p_id:t.id, p_in:fromInput(vin), p_out:null, p_note:why});
+    await rpc("time_office_check_out",{p_token:App.token, p_id:t.id, p_at:fromInput(vout), p_note:why, p_work:$("oWork").value});
+    closeSheet(); toast(t.employee+" checked out"); viewHours();
+  });
+  $("oVoid").onclick=()=>withBusy($("oVoid"),async()=>{
+    const why=$("oWhy").value.trim(); if(!why) return alert("Add a short reason for removing it.");
+    if(!confirm("Remove this entry? It stops counting toward hours but stays in the history.")) return;
+    await rpc("time_void",{p_token:App.token, p_id:t.id, p_note:why});
+    closeSheet(); toast("Entry removed"); viewHours();
+  });
+  loadEntryHistory(t);
 }
 async function addHours(people){
   let jobs=[];
@@ -421,6 +459,7 @@ function downloadHours(ents,from,last){
   const lines=[["Person","Date","Pool","Check in","Check out","Hours","Work done","Notes"].join(",")];
   ents.filter(t=>!t.voided).sort((a,b)=>a.employee.localeCompare(b.employee)||a.check_in.localeCompare(b.check_in)).forEach(t=>{
     const notes=[]; if(!t.check_out) notes.push("Still checked in"); if(t.out_by_hand) notes.push("Out time typed by hand");
+    if(t.office_out) notes.push("Checked out by "+t.office_out);
     if(t.changes>0) notes.push("Changed by office");
     const d=new Date(t.check_in);
     lines.push([t.employee, (d.getMonth()+1)+"/"+d.getDate()+"/"+d.getFullYear(), t.job, tClock(t.check_in),

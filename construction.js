@@ -100,6 +100,8 @@ function drawCheckin(st,jobs){
       h+='<button class="btn primary block big-btn" id="outNow" style="margin-top:12px">Check out</button>';
     }
     h+='</div>';
+    // this pool's notes, right under where they're checked in, so the crew sees them on arrival
+    h+='<div class="card"><h3>Notes for '+esc(o.job)+'</h3><div id="jobNotes">'+loading()+'</div></div>';
   }
   h+='<div class="card"><h3>'+(o?"Switch to another pool":"Which pool are you at?")+'</h3>';
   if(o) h+='<p class="muted small" style="margin:0 0 8px">Checks you out of '+esc(o.job)+' and into the new pool.</p>';
@@ -107,7 +109,6 @@ function drawCheckin(st,jobs){
   if(!others.length) h+='<p class="muted" style="margin:0">No pools on the schedule.</p>';
   else h+='<div class="joblist">'+others.map(j=>'<button class="btn" data-j="'+esc(j.id)+'">'+esc(j.name)+'</button>').join("")+'</div>';
   h+='</div>';
-  if(o) h+='<div class="card"><h3>'+esc(o.job)+' notes</h3><div id="jobNotes">'+loading()+'</div></div>';
   // the last 7 days, by day
   const byDay={};
   (st.recent||[]).forEach(r=>{ const k=new Date(r.check_in).toDateString(); (byDay[k]=byDay[k]||[]).push(r); });
@@ -199,12 +200,14 @@ async function notesBlock(host,jobId,opt){
   catch(e){ if(e.code!=="expired") host.innerHTML='<div class="notice err">'+esc(e.message)+'</div>'; return; }
   if(!host.isConnected) return;
   const shown=opt.limit?list.slice(0,opt.limit):list;
-  let h='<div class="addnote"><textarea rows="2" maxlength="4000" placeholder="'+
+  const add='<div class="addnote"><textarea rows="2" maxlength="4000" placeholder="'+
         (jobId?"Add a note for this pool":"Add a note for everyone")+'"></textarea>'+
         '<button class="btn primary sm">Post</button></div>';
-  if(!list.length) h+='<p class="muted small" style="margin:6px 0 0">No notes yet.</p>';
+  let h=opt.compact?'':add;     // on the check-in page the notes come first, then the add box
+  if(!list.length) h+='<p class="muted small" style="margin:6px 0 '+(opt.compact?'10px':'0')+'">'+(jobId?'No notes for this pool yet.':'No notes yet.')+'</p>';
   h+='<ul class="notes">'+shown.map(n=>noteItem(n)).join("")+'</ul>';
   if(opt.limit && list.length>opt.limit) h+='<button class="btn ghost sm" data-more>See all '+list.length+' notes</button>';
+  if(opt.compact) h+=add;
   host.innerHTML=h;
   const ta=host.querySelector("textarea"), post=host.querySelector(".addnote button");
   post.onclick=()=>withBusy(post,async()=>{

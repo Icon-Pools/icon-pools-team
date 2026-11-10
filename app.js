@@ -545,5 +545,27 @@ async function boot(){
 if("serviceWorker" in navigator && location.protocol==="https:"){
   window.addEventListener("load",()=>navigator.serviceWorker.register("sw.js").catch(()=>{}));
 }
+// Coming back after being away 30+ minutes (phone left the app in the background):
+// reload, so every screen is current and any newly uploaded version of the app loads.
+// Skipped while a pop-up is open or something is half typed, so nothing is lost.
+const AWAY_RELOAD_MS = 30*60*1000;
+let awaySince = document.hidden ? Date.now() : 0;
+function typingSomething(){
+  if(document.getElementById("sheet")) return true;
+  // the Production Board with changes not yet approved
+  const fr=document.querySelector('iframe[src="board.html"]');
+  try{ if(fr && fr.contentWindow.isDirty && fr.contentWindow.isDirty()) return true; }catch(e){ return true; }
+  return Array.from(document.querySelectorAll("textarea, input:not([type=hidden]):not([type=checkbox]):not([type=radio])"))
+    .some(x=>String(x.value||"").trim()!=="" && x.defaultValue!==x.value);
+}
+function backFromAway(){
+  if(awaySince && Date.now()-awaySince>=AWAY_RELOAD_MS && !typingSomething()){ location.reload(); return; }
+  awaySince=0;
+}
+document.addEventListener("visibilitychange",()=>{
+  if(document.hidden){ if(!awaySince) awaySince=Date.now(); } else backFromAway();
+});
+window.addEventListener("pageshow",e=>{ if(e.persisted && !document.hidden) backFromAway(); });
+
 // wait until construction.js, ann.js and notify.js have loaded too
 if(document.readyState==="loading") document.addEventListener("DOMContentLoaded",boot); else boot();

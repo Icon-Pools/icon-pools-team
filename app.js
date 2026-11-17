@@ -276,8 +276,9 @@ function showApp(){
   });
   const inDept=DEPTS.indexOf(App.tab)>=0;
   drawSubtabs(inDept);
-  const onBoard=App.tab==="construction" && sub()==="schedule";
-  showBoard(onBoard);
+  const frame=App.tab==="construction" && (sub()==="schedule"||sub()==="customer") ? sub() : null;
+  const onBoard=!!frame;
+  showBoard(frame);
   $("view").hidden=onBoard;
   const sel=$("tabs").querySelector('[aria-selected="true"]');
   if(sel) sel.scrollIntoView({block:"nearest",inline:"nearest"});
@@ -313,26 +314,33 @@ function viewDept(){
 }
 
 
-/* ---------- Construction tab: the Production Board ----------
+/* ---------- Construction tab: the Production Board, and its Customer view ----------
    board.html runs inside the tab. It's created once and only hidden when you
-   switch tabs, so unapproved schedule changes survive a trip to another tab. */
-function showBoard(on){
-  let host=$("boardHost");
-  if(on && !host){
-    host=document.createElement("div"); host.id="boardHost";
-    host.innerHTML='<iframe src="board.html" title="Production Board"></iframe>';
-    document.body.insertBefore(host,$("toast"));
-  }
-  if(host) host.hidden=!on;
+   switch tabs, so unapproved schedule changes survive a trip to another tab.
+   The Customer view is the same page in presentation mode (board.html?customer=1). */
+const FRAMES={schedule:["boardHost","board.html","Production Board"],
+              customer:["custHost","board.html?customer=1","Customer view"]};
+function showBoard(which){
+  Object.keys(FRAMES).forEach(k=>{
+    const [id,src,title]=FRAMES[k];
+    let host=$(id);
+    if(which===k && !host){
+      host=document.createElement("div"); host.id=id; host.className="framehost";
+      host.innerHTML='<iframe src="'+src+'" title="'+title+'" allow="fullscreen" allowfullscreen></iframe>';
+      document.body.insertBefore(host,$("toast"));
+    }
+    if(host) host.hidden=(which!==k);
+  });
   sizeBoard();
 }
 function sizeBoard(){
-  const host=$("boardHost"); if(!host || host.hidden) return;
   const top=document.querySelector(".topbar").getBoundingClientRect().bottom;
-  host.firstChild.style.height=Math.max(300,window.innerHeight-top)+"px";
+  document.querySelectorAll(".framehost").forEach(host=>{
+    if(!host.hidden) host.firstChild.style.height=Math.max(300,window.innerHeight-top)+"px";
+  });
 }
 window.addEventListener("resize",sizeBoard);
-function dropBoard(){ const host=$("boardHost"); if(host) host.remove(); }
+function dropBoard(){ document.querySelectorAll(".framehost").forEach(h=>h.remove()); }
 
 function isInstalled(){
   return window.matchMedia("(display-mode: standalone)").matches || navigator.standalone===true;

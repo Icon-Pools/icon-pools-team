@@ -388,6 +388,61 @@ tr.nextslot td{background:var(--paper2, rgba(127,127,127,.07)); border-top:1px d
   .pr-t{width:100%; border-collapse:collapse; font-size:11pt}
   .pr-t th,.pr-t td{border:1px solid #666; padding:5px 7px; text-align:left}
 }
+
+/* ---------- customer view ---------- */
+.customer main{max-width:none; padding:16px}
+.cv{max-width:980px; margin:0 auto}
+.cv-bar{display:flex; gap:8px; margin-bottom:14px}
+.cv-pick{flex:1; min-width:0; padding:9px 11px; border:1px solid var(--rule); border-radius:var(--radius);
+  background:var(--surface); color:var(--ink); font-size:16px; font-weight:600}
+.cv-card{background:var(--surface); border:1px solid var(--rule); border-radius:10px; padding:28px 24px 22px}
+.cv-brand{font-family:"Barlow Condensed",sans-serif; font-weight:700; letter-spacing:.14em; text-transform:uppercase;
+  color:var(--water); font-size:14px}
+.cv-name{font-size:34px; line-height:1.1; margin:6px 0 2px; letter-spacing:-.02em}
+.cv-type{color:var(--slate); font-size:16px}
+.cv-status{margin:22px 0 6px; font-size:19px; font-weight:600}
+.cv-start{margin:26px 0 6px; padding:22px; border-radius:8px; background:var(--sunk); border:1px solid var(--rule2)}
+.cv-k{color:var(--slate); font-weight:600; font-size:14px; text-transform:uppercase; letter-spacing:.05em}
+.cv-big{font-size:32px; font-weight:700; letter-spacing:-.01em; margin:4px 0}
+.cv-note{color:var(--slate); margin:6px 0 0}
+.cv-steps{list-style:none; margin:18px 0 8px; padding:0}
+.cv-step{position:relative; padding:0 0 22px 40px}
+.cv-step::before{content:""; position:absolute; left:11px; top:24px; bottom:0; width:2px; background:var(--rule)}
+.cv-step:last-child::before{display:none}
+.cv-step.done::before{background:var(--moss)}
+.cv-dot{position:absolute; left:0; top:2px; width:24px; height:24px; border-radius:50%;
+  border:2px solid var(--rule); background:var(--surface)}
+.cv-step.done .cv-dot{background:var(--moss); border-color:var(--moss)}
+.cv-step.done .cv-dot::after{content:"\2713"; color:#fff; font-size:14px; font-weight:700;
+  position:absolute; inset:0; display:grid; place-items:center}
+.cv-step.now .cv-dot{border-color:var(--water); border-width:3px; box-shadow:0 0 0 5px color-mix(in srgb,var(--water) 22%,transparent)}
+.cv-step.now .cv-dot::after{content:""; position:absolute; inset:5px; border-radius:50%; background:var(--water)}
+.cv-label{font-size:19px; font-weight:700; line-height:1.25}
+.cv-when{font-size:16px; color:var(--slate); margin-top:1px}
+.cv-step.now .cv-when{color:var(--water); font-weight:700}
+.cv-step.done .cv-label,.cv-step.done .cv-when{color:var(--faint)}
+.cv-foot{color:var(--faint); font-size:13.5px; margin:14px 0 0; border-top:1px solid var(--rule2); padding-top:12px}
+@media (min-width:900px){
+  .cv-card{padding:40px 44px 30px}
+  .cv-name{font-size:46px}
+  .cv-steps{display:flex; margin:34px 0 14px}
+  .cv-step{flex:1; padding:40px 12px 0 0}
+  .cv-step::before{left:28px; right:0; top:11px; bottom:auto; width:auto; height:2px}
+  .cv-dot{top:0}
+  .cv-label{font-size:20px}
+}
+/* presenting: full screen, bigger, no picker */
+:fullscreen .cv-bar{display:none}
+:fullscreen body{background:var(--paper)}
+:fullscreen main{padding:4vh 4vw; min-height:100vh; display:flex; align-items:center}
+:fullscreen .cv{width:100%}
+:fullscreen .cv{max-width:1200px}
+:fullscreen .cv-card{border:0; background:transparent}
+:fullscreen .cv-name{font-size:60px}
+:fullscreen .cv-label{font-size:24px}
+:fullscreen .cv-when{font-size:20px}
+:fullscreen .cv-status{font-size:24px}
+:fullscreen .cv-big{font-size:48px}
 </style>
 </head>
 <body>
@@ -1502,6 +1557,7 @@ const TABS=[["board","Board"],["pipeline","Pipeline"],["schedule","Job progress"
             ["settings","Rules"],["help","How it works"]];
 function renderTabs(){
   const n=document.getElementById("tabs"); n.innerHTML="";
+  if(CUSTOMER){ n.style.display="none"; return; }
   // view-only staff get the calendar alone, with no other board tabs
   n.style.display=App.canEdit?"":"none";
   if(!App.canEdit){ App.tab="board"; return; }
@@ -1648,6 +1704,7 @@ function colorOf(id){ const i=jobIdx(id); return i<0?"var(--slate)":jobColor(App
 
 function renderPending(){
   const slot=document.getElementById("pendingSlot"); slot.innerHTML="";
+  if(CUSTOMER) return;
   if(!App.canEdit || !isDirty()) return;   // view-only staff can't approve, so don't ask them to
   const d=diffRows();
   const moved=d.filter(x=>x.type==="moved").length;
@@ -3883,13 +3940,147 @@ function viewMoves(){
   return v;
 }
 
+/* ---------- CUSTOMER VIEW (board.html?customer=1) ----------
+   A clean timeline to show a customer: a few milestones per pool, each as a
+   rough window ("Mid–late January") that leans later than the plan, so
+   ordinary moves never break a promise. Built from the saved schedule.
+   Opened from the team app's Construction > Customer view tab (Owners and Admins). */
+const CUSTOMER = new URLSearchParams(location.search).has("customer");
+if(CUSTOMER){ document.documentElement.classList.add("customer"); App.tab="customer"; }
+const CV_STEPS={
+  vinyl:[["Excavation","Excavation","start"],["Coping pour","Pour Coping","start"],
+         ["Deck pour","Pour Pool Deck","start"],["Liner install","Liner Install","start"]],
+  gunite:[["Excavation","Excavation","start"],["Walls shot","Shoot Gunite","start"],
+          ["Tile & coping done","Set Coping","finish"],["Deck pour","Pour Pool Deck","start"],
+          ["Plaster","Plaster","start"]]
+};
+const CV_LONG=60;          // first milestone further out than this: show the start window only
+const MONTHS_LONG=["January","February","March","April","May","June","July","August","September","October","November","December"];
+// a rough window around a planned date, pushed a little later; more cushion the further out it is
+function cvWindow(dateStr){
+  const n=diffD(dateStr,todayStr());
+  const [lo,hi]= n<=21?[1,10] : n<=90?[4,16] : [6,20];
+  const a=sd(addD(dateStr,lo)), b=sd(addD(dateStr,hi));
+  const part=d=>d.getDate()<=10?0:d.getDate()<=20?1:2, P=["Early","Mid","Late"];
+  const yr=d=>d.getFullYear()!==new Date().getFullYear()?" "+d.getFullYear():"";
+  const ma=MONTHS_LONG[a.getMonth()], mb=MONTHS_LONG[b.getMonth()];
+  if(a.getMonth()===b.getMonth()){
+    const pa=part(a), pb=part(b);
+    if(pa===pb) return P[pa]+" "+ma+yr(a);
+    if(pb-pa===1) return P[pa]+"–"+P[pb].toLowerCase()+" "+ma+yr(a);
+    return ma+yr(a);
+  }
+  return P[part(a)]+" "+ma+(yr(a)!==yr(b)?yr(a):"")+" – "+P[part(b)].toLowerCase()+" "+mb+yr(b);
+}
+// the milestones for one pool, each: {label, state:"done"|"now"|"next", when}
+function cvMilestones(job){
+  const today=todayStr();
+  const rows=App.sched.rows.filter(r=>r.jobId===job.id);
+  let defs=CV_STEPS[job.type];
+  if(job.type==="renovation"){
+    const real=rows.filter(r=>r.start && r.cat!=="DONE");
+    const done=rows.filter(r=>r.cat==="DONE");
+    if(!real.length && !done.length) return [];
+    const first=rows.find(r=>r.start)||real[0], last=real[real.length-1];
+    const out=[];
+    out.push(cvState("Work begins", first||null, "start", today, done.length>0 && !(first&&first.start)));
+    if(last) out.push(cvState("Work complete", last, "finish", today, false));
+    return out;
+  }
+  if(!defs) return [];
+  return defs.map(([label,task,which])=>{
+    const r=rows.find(x=>x.task===task) || (task==="Set Coping"?rows.find(x=>x.task==="Grout Tile"):null);
+    return r ? cvState(label,r,which,today,false) : null;
+  }).filter(Boolean);
+}
+function cvState(label,r,which,today,forceDone){
+  if(forceDone || !r || r.cat==="DONE") return {label, state:"done"};
+  if(!r.start) return {label, state:"next", when:"To be scheduled"};
+  if(diffD(r.finish,today)<0) return {label, state:"done"};
+  if(diffD(r.start,today)<=0 && which==="start") return {label, state:"now"};
+  return {label, state:"next", when:cvWindow(which==="finish"?r.finish:r.start), date:which==="finish"?r.finish:r.start};
+}
+function cvPools(){
+  const today=todayStr();
+  return App.staged.jobs.filter(j=>!j.hypo && j.status!=="archived" &&
+      (j.type==="vinyl"||j.type==="gunite"||j.type==="renovation"))
+    .map(j=>{
+      const ms=cvMilestones(j);
+      const next=ms.find(m=>m.state!=="done");
+      const started=ms.some(m=>m.state!=="next");
+      const firstDate=(ms.find(m=>m.date)||{}).date||"9999-12-31";
+      const group=!ms.length||!next ? null : started ? "Underway"
+                 : diffD(firstDate,today)<=CV_LONG ? "Starting soon" : "Coming up";
+      return {job:j, ms, group, firstDate};
+    }).filter(p=>p.group)
+    .sort((a,b)=>a.firstDate.localeCompare(b.firstDate)||String(a.job.name).localeCompare(String(b.job.name)));
+}
+function viewCustomer(){
+  const v=el("div","cv");
+  const pools=cvPools();
+  if(!pools.length){ v.appendChild(el("p","sub","No pools on the schedule yet.")); return v; }
+  if(!pools.some(p=>p.job.id===App.custJob)) App.custJob=pools[0].job.id;
+  // picker (hidden while presenting)
+  const bar=el("div","cv-bar");
+  const sel=el("select","cv-pick"); sel.setAttribute("aria-label","Pool");
+  ["Underway","Starting soon","Coming up"].forEach(g=>{
+    const list=pools.filter(p=>p.group===g); if(!list.length) return;
+    const og=document.createElement("optgroup"); og.label=g;
+    list.forEach(p=>{ const o=document.createElement("option"); o.value=p.job.id; o.textContent=p.job.name; og.appendChild(o); });
+    sel.appendChild(og);
+  });
+  sel.value=App.custJob;
+  sel.onchange=()=>{ App.custJob=sel.value; render(); };
+  bar.appendChild(sel);
+  if(document.fullscreenEnabled){
+    const pr=el("button","btn primary","Present");
+    pr.onclick=()=>document.documentElement.requestFullscreen().catch(()=>{});
+    bar.appendChild(pr);
+  }
+  v.appendChild(bar);
+
+  const p=pools.find(x=>x.job.id===App.custJob);
+  const card=el("div","cv-card");
+  card.appendChild(el("div","cv-brand","Icon Pools"));
+  card.appendChild(el("h1","cv-name",p.job.name));
+  card.appendChild(el("div","cv-type",
+    p.job.type==="vinyl"?"Vinyl liner pool":p.job.type==="gunite"?"Gunite pool":"Renovation"));
+  const next=p.ms.find(m=>m.state!=="done");
+  const longTerm = p.group==="Coming up";
+  if(longTerm){
+    const box=el("div","cv-start");
+    box.appendChild(el("div","cv-k","Estimated construction start"));
+    box.appendChild(el("div","cv-big",p.ms[0].when||"To be scheduled"));
+    box.appendChild(el("p","cv-note","A step-by-step timeline will be shared as your start gets closer."));
+    card.appendChild(box);
+  }else{
+    card.appendChild(el("div","cv-status", p.group==="Underway"
+      ? (next&&next.state==="now" ? next.label+" is happening now" : "Construction is underway")
+      : "Construction starts "+(next&&next.when?next.when.replace(/^(Early|Mid|Late)/,c=>c.toLowerCase()):"soon")));
+    const ol=el("ol","cv-steps");
+    p.ms.forEach(m=>{
+      const li=el("li","cv-step "+m.state);
+      li.appendChild(el("span","cv-dot"));
+      li.appendChild(el("div","cv-label",m.label));
+      li.appendChild(el("div","cv-when", m.state==="done"?"Complete":m.state==="now"?"Happening now":m.when));
+      ol.appendChild(li);
+    });
+    card.appendChild(ol);
+  }
+  card.appendChild(el("p","cv-foot","Timing is an estimate. Weather, inspections and deliveries can shift it, "+
+    "and we'll confirm exact days as each step gets close."));
+  v.appendChild(card);
+  return v;
+}
+document.addEventListener("fullscreenchange",()=>{ if(CUSTOMER) render(); });
+
 /* ---------- MAIN RENDER ---------- */
 function render(){
   renderTabs(); renderPending();
   const host=document.getElementById("view"); host.innerHTML="";
   let v;
   try{
-    v = App.tab==="board"?viewBoard():App.tab==="pipeline"?viewPipeline():
+    v = App.tab==="customer"?viewCustomer():App.tab==="board"?viewBoard():App.tab==="pipeline"?viewPipeline():
         App.tab==="schedule"?viewSchedule():App.tab==="calendar"?viewCalendar():
         App.tab==="outlook"?viewOutlook():App.tab==="assist"?viewAssist():
         App.tab==="moves"?viewMoves():

@@ -52,7 +52,7 @@ function stillOn(tab){ return App.screen==="app" && App.tab==="construction" && 
 function conTabs(){            // after Announcements, which every department has
   const t=[["schedule","Schedule"]];
   if(isCrew(App.me)) t.push(["checkin","Check in"],["notes","Notes"]);
-  if(isAdmin(App.me)) t.push(["hours","Hours"]);
+  if(isAdmin(App.me)) t.push(["hours","Hours"],["customer","Customer view"]);
   return t;
 }
 function viewConstruction(){

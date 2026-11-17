@@ -431,10 +431,50 @@ tr.nextslot td{background:var(--paper2, rgba(127,127,127,.07)); border-top:1px d
   .cv-dot{top:0}
   .cv-label{font-size:20px}
 }
+.cv-head{margin:4px 0 14px}
+.cv-title{font-size:30px; line-height:1.1; margin:4px 0 2px; letter-spacing:-.02em}
+.cv-sub{color:var(--slate); margin:0; font-size:15.5px}
+.cv-line{background:var(--surface); border:1px solid var(--rule); border-radius:10px; padding:14px 14px 10px; margin-bottom:14px}
+.cv-lh{font-size:17px; margin:0 0 8px}
+.cv-scroll{overflow-x:auto; -webkit-overflow-scrolling:touch}
+.cv-chart{min-width:calc(var(--months) * 64px + 92px)}
+.cv-row{display:flex; align-items:center; min-height:34px; border-top:1px solid var(--rule2); cursor:pointer}
+.cv-row.cv-hdr{cursor:default; border-top:0; min-height:24px}
+.cv-lab{flex:0 0 92px; position:sticky; left:0; z-index:2; background:var(--surface); font-weight:700;
+  font-size:14px; color:var(--slate); padding-right:8px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis}
+.cv-track{position:relative; flex:1; height:34px}
+.cv-hdr .cv-track{height:24px}
+.cv-month{position:absolute; top:0; font-size:12.5px; font-weight:700; color:var(--slate); padding-left:4px;
+  border-left:1px solid var(--rule)}
+.cv-grid{position:absolute; top:0; bottom:0; border-left:1px solid var(--rule2)}
+.cv-seg{position:absolute; top:9px; height:16px; border-radius:8px}
+.cv-seg.build,.cv-key.build{background:#AEB8BF}
+.cv-seg.finish,.cv-key.finish{background:#D3DADF}
+:root[data-theme="dark"] .cv-seg.build,:root[data-theme="dark"] .cv-key.build{background:#4A5863}
+:root[data-theme="dark"] .cv-seg.finish,:root[data-theme="dark"] .cv-key.finish{background:#33404A}
+@media (prefers-color-scheme: dark){
+  :root:not([data-theme="light"]) .cv-seg.build,:root:not([data-theme="light"]) .cv-key.build{background:#4A5863}
+  :root:not([data-theme="light"]) .cv-seg.finish,:root:not([data-theme="light"]) .cv-key.finish{background:#33404A}
+}
+.cv-wait{position:absolute; top:16px; height:0; border-top:2px dotted var(--faint)}
+.cv-key.wait{border-top:2px dotted var(--faint); height:0!important; margin-top:6px}
+.cv-now{position:absolute; top:0; bottom:0; width:2px; margin-left:-1px; background:var(--oxide); opacity:.55}
+.cv-row:hover:not(.cv-hdr) .cv-lab{color:var(--ink)}
+.cv-row.mine{background:color-mix(in srgb,var(--water) 10%,transparent)}
+.cv-row.mine .cv-lab{color:var(--water); background:color-mix(in srgb,var(--water) 10%,var(--surface)); font-size:15px}
+.cv-row.mine .cv-seg.build{background:var(--water)}
+.cv-row.mine .cv-seg.finish{background:#7FB2C6}
+.cv-legend{display:flex; gap:16px; flex-wrap:wrap; color:var(--slate); font-size:13px; margin:-4px 2px 16px}
+.cv-legend span{display:flex; align-items:center; gap:6px}
+.cv-key{display:inline-block; width:22px; height:10px; border-radius:5px}
+.cv-card .cv-name{font-size:30px; margin:0 0 2px}
+:fullscreen .cv-title{font-size:44px}
+:fullscreen .cv-row{min-height:42px}
+:fullscreen .cv-lab{font-size:17px; flex-basis:120px}
 /* presenting: full screen, bigger, no picker */
 :fullscreen .cv-bar{display:none}
 :fullscreen body{background:var(--paper)}
-:fullscreen main{padding:4vh 4vw; min-height:100vh; display:flex; align-items:center}
+:fullscreen main{padding:4vh 4vw}
 :fullscreen .cv{width:100%}
 :fullscreen .cv{max-width:1200px}
 :fullscreen .cv-card{border:0; background:transparent}
@@ -4000,37 +4040,53 @@ function cvState(label,r,which,today,forceDone){
   if(diffD(r.start,today)<=0 && which==="start") return {label, state:"now"};
   return {label, state:"next", when:cvWindow(which==="finish"?r.finish:r.start), date:which==="finish"?r.finish:r.start};
 }
-function cvPools(){
+// one pool's place on the lineup: its build stretch, then its finish step (liner or plaster),
+// which can sit apart from the build when it waits for the season
+function cvSpan(job){
   const today=todayStr();
-  return App.staged.jobs.filter(j=>!j.hypo && j.status!=="archived" &&
-      (j.type==="vinyl"||j.type==="gunite"||j.type==="renovation"))
-    .map(j=>{
-      const ms=cvMilestones(j);
-      const next=ms.find(m=>m.state!=="done");
-      const started=ms.some(m=>m.state!=="next");
-      const firstDate=(ms.find(m=>m.date)||{}).date||"9999-12-31";
-      const group=!ms.length||!next ? null : started ? "Underway"
-                 : diffD(firstDate,today)<=CV_LONG ? "Starting soon" : "Coming up";
-      return {job:j, ms, group, firstDate};
-    }).filter(p=>p.group)
-    .sort((a,b)=>a.firstDate.localeCompare(b.firstDate)||String(a.job.name).localeCompare(String(b.job.name)));
+  const rows=App.sched.rows.filter(r=>r.jobId===job.id && !(r.tpl&&r.tpl.layout));
+  if(!CV_STEPS[job.type]) return null;
+  const live=rows.filter(r=>r.start && r.cat!=="DONE" && r.cat!=="WAIT" && r.cat!=="HOLD")
+                 .sort((x,y)=>x.start.localeCompare(y.start));
+  if(!live.length) return null;                            // nothing left to build
+  const started=rows.some(r=>r.cat==="DONE") || diffD(live[0].start,today)<=0;
+  // stretches of work, split wherever nothing happens for 3+ weeks (waiting on the season)
+  const parts=[]; let cur=null;
+  live.forEach(r=>{
+    if(cur && diffD(r.start,cur.e)<21){ if(diffD(r.finish,cur.e)>0) cur.e=r.finish; }
+    else { cur={s:r.start, e:r.finish}; parts.push(cur); }
+  });
+  // construction: everything through the deck pour; finishing: whatever comes after a wait
+  const deck=rows.find(r=>r.task==="Pour Pool Deck");
+  let k=parts.length-1;
+  if(parts.length>1 && deck && deck.finish && deck.cat!=="DONE" && diffD(parts[k].s,deck.finish)>0){
+    return {job, started, s1:parts[0].s, e1:parts[k-1].e, s2:parts[k].s, e2:parts[k].e};
+  }
+  return {job, started, s1:parts[0].s, e1:parts[k].e, s2:null, e2:null};
 }
+function cvLineup(type){
+  return App.staged.jobs.filter(j=>j.type===type && !j.hypo && j.status!=="archived")
+    .map(cvSpan).filter(p=>p && (p.s1||p.s2))
+    .sort((a,b)=>(b.started-a.started)||String(a.s1||a.s2).localeCompare(String(b.s1||b.s2)));
+}
+const CV_TYPE={vinyl:"Poly wall pool", gunite:"Gunite pool", renovation:"Renovation"};
 function viewCustomer(){
   const v=el("div","cv");
-  const pools=cvPools();
-  if(!pools.length){ v.appendChild(el("p","sub","No pools on the schedule yet.")); return v; }
-  if(!pools.some(p=>p.job.id===App.custJob)) App.custJob=pools[0].job.id;
-  // picker (hidden while presenting)
+  const lines=[["gunite","Gunite pools"],["vinyl","Poly wall pools"]].map(([t,label])=>({t,label,pools:cvLineup(t)}));
+  const all=lines.reduce((a,l)=>a.concat(l.pools),[]);
+  if(!all.length){ v.appendChild(el("p","sub","No pools on the schedule yet.")); return v; }
+  if(App.custJob && !all.some(p=>p.job.id===App.custJob)) App.custJob=null;
+  // picker for the office (hidden while presenting): names only appear here and on the chosen pool
   const bar=el("div","cv-bar");
-  const sel=el("select","cv-pick"); sel.setAttribute("aria-label","Pool");
-  ["Underway","Starting soon","Coming up"].forEach(g=>{
-    const list=pools.filter(p=>p.group===g); if(!list.length) return;
-    const og=document.createElement("optgroup"); og.label=g;
-    list.forEach(p=>{ const o=document.createElement("option"); o.value=p.job.id; o.textContent=p.job.name; og.appendChild(o); });
-    sel.appendChild(og);
-  });
-  sel.value=App.custJob;
-  sel.onchange=()=>{ App.custJob=sel.value; render(); };
+  const sel=el("select","cv-pick"); sel.setAttribute("aria-label","Customer");
+  const none=document.createElement("option"); none.value=""; none.textContent="Choose a customer"; sel.appendChild(none);
+  lines.forEach(l=>{ if(!l.pools.length) return;
+    const og=document.createElement("optgroup"); og.label=l.label;
+    l.pools.slice().sort((a,b)=>String(a.job.name).localeCompare(String(b.job.name))).forEach(p=>{
+      const o=document.createElement("option"); o.value=p.job.id; o.textContent=p.job.name; og.appendChild(o); });
+    sel.appendChild(og); });
+  sel.value=App.custJob||"";
+  sel.onchange=()=>{ App.custJob=sel.value||null; render(); };
   bar.appendChild(sel);
   if(document.fullscreenEnabled){
     const pr=el("button","btn primary","Present");
@@ -4039,37 +4095,96 @@ function viewCustomer(){
   }
   v.appendChild(bar);
 
-  const p=pools.find(x=>x.job.id===App.custJob);
-  const card=el("div","cv-card");
-  card.appendChild(el("div","cv-brand","Icon Pools"));
-  card.appendChild(el("h1","cv-name",p.job.name));
-  card.appendChild(el("div","cv-type",
-    p.job.type==="vinyl"?"Vinyl liner pool":p.job.type==="gunite"?"Gunite pool":"Renovation"));
-  const next=p.ms.find(m=>m.state!=="done");
-  const longTerm = p.group==="Coming up";
-  if(longTerm){
-    const box=el("div","cv-start");
-    box.appendChild(el("div","cv-k","Estimated construction start"));
-    box.appendChild(el("div","cv-big",p.ms[0].when||"To be scheduled"));
-    box.appendChild(el("p","cv-note","A step-by-step timeline will be shared as your start gets closer."));
-    card.appendChild(box);
-  }else{
-    card.appendChild(el("div","cv-status", p.group==="Underway"
-      ? (next&&next.state==="now" ? next.label+" is happening now" : "Construction is underway")
-      : "Construction starts "+(next&&next.when?next.when.replace(/^(Early|Mid|Late)/,c=>c.toLowerCase()):"soon")));
-    const ol=el("ol","cv-steps");
-    p.ms.forEach(m=>{
-      const li=el("li","cv-step "+m.state);
-      li.appendChild(el("span","cv-dot"));
-      li.appendChild(el("div","cv-label",m.label));
-      li.appendChild(el("div","cv-when", m.state==="done"?"Complete":m.state==="now"?"Happening now":m.when));
-      ol.appendChild(li);
+  const head=el("div","cv-head");
+  head.appendChild(el("div","cv-brand","Icon Pools"));
+  head.appendChild(el("h1","cv-title","Our build lineup"));
+  head.appendChild(el("p","cv-sub","Pools are built in the order deposits are received."));
+  v.appendChild(head);
+
+  // shared month axis: this month through the last finish (at most 15 months)
+  const now=sd(todayStr()), m0=new Date(now.getFullYear(),now.getMonth(),1);
+  let maxD=todayStr(); all.forEach(p=>[p.e1,p.e2].forEach(d=>{ if(d && diffD(d,maxD)>0) maxD=d; }));
+  const mEnd=sd(maxD); let nM=(mEnd.getFullYear()-m0.getFullYear())*12+mEnd.getMonth()-m0.getMonth()+1;
+  nM=Math.max(4,Math.min(15,nM));
+  const U=nM*3;   // thirds of a month: early, mid, late
+  const unit=d=>{ const x=sd(d); const mi=(x.getFullYear()-m0.getFullYear())*12+x.getMonth()-m0.getMonth();
+    return Math.max(0,Math.min(U-1, mi*3+(x.getDate()<=10?0:x.getDate()<=20?1:2))); };
+  const pct=u=>(u/U*100)+"%";
+  const seg=(cls,a,b)=>{ const s=el("div","cv-seg "+cls); s.style.left=pct(a); s.style.width=pct(Math.max(1,b-a+1)); return s; };
+
+  lines.forEach(l=>{
+    if(!l.pools.length) return;
+    const sec=el("section","cv-line");
+    sec.appendChild(el("h2","cv-lh",l.label));
+    const scroll=el("div","cv-scroll"), chart=el("div","cv-chart");
+    chart.style.setProperty("--months",nM);
+    // month header
+    const hdr=el("div","cv-row cv-hdr"); hdr.appendChild(el("div","cv-lab",""));
+    const ht=el("div","cv-track");
+    for(let i=0;i<nM;i++){ const d=new Date(m0.getFullYear(),m0.getMonth()+i,1);
+      const c=el("div","cv-month",MONTHS_LONG[d.getMonth()].slice(0,3)+(d.getMonth()===0||i===0?" "+d.getFullYear():""));
+      c.style.left=pct(i*3); c.style.width=pct(3); ht.appendChild(c); }
+    hdr.appendChild(ht); chart.appendChild(hdr);
+    l.pools.forEach((p,i)=>{
+      const mine=p.job.id===App.custJob;
+      const row=el("div","cv-row"+(mine?" mine":""));
+      row.appendChild(el("div","cv-lab", "#"+(i+1)+(mine?" "+p.job.name:"")));
+      const tr=el("div","cv-track");
+      for(let m=1;m<nM;m++){ const g=el("div","cv-grid"); g.style.left=pct(m*3); tr.appendChild(g); }
+      const a1=p.started?0:(p.s1?unit(p.s1):null), b1=p.e1?unit(p.e1):a1;
+      if(a1!==null) tr.appendChild(seg("build",a1,b1));
+      if(p.s2){ const a2=Math.max(unit(p.s2),(b1||0)+1), b2=Math.max(a2,unit(p.e2||p.s2));
+        if(b1!==null && a2>b1+1){ const w=el("div","cv-wait"); w.style.left=pct(b1+1); w.style.width=pct(a2-b1-1); tr.appendChild(w); }
+        tr.appendChild(seg("finish",a2,b2)); }
+      const nowL=el("div","cv-now"); nowL.style.left=pct(unit(todayStr())+((now.getDate()-1)%10)/10); tr.appendChild(nowL);
+      row.appendChild(tr);
+      row.onclick=()=>{ App.custJob=mine?null:p.job.id; render(); };
+      row.title=mine?"":"Show this pool";
+      chart.appendChild(row);
     });
-    card.appendChild(ol);
+    scroll.appendChild(chart); sec.appendChild(scroll); v.appendChild(sec);
+  });
+  const lg=el("div","cv-legend");
+  [["build","Construction"],["finish","Finishing (liner or plaster)"],["wait","Waiting for the season"]].forEach(([c,t])=>{
+    const s=el("span"); s.appendChild(el("i","cv-key "+c)); s.appendChild(document.createTextNode(t)); lg.appendChild(s); });
+  v.appendChild(lg);
+
+  // the chosen customer's own timeline
+  const p=all.find(x=>x.job.id===App.custJob);
+  if(p){
+    const job=p.job, ms=cvMilestones(job);
+    const pos=lines.find(l=>l.t===job.type).pools.indexOf(p)+1;
+    const card=el("div","cv-card");
+    card.appendChild(el("h2","cv-name",job.name));
+    card.appendChild(el("div","cv-type",CV_TYPE[job.type]+" · #"+pos+" in the "+(job.type==="gunite"?"gunite":"poly wall")+" lineup"));
+    const next=ms.find(m=>m.state!=="done");
+    if(!p.started && p.s1 && diffD(p.s1,todayStr())>CV_LONG){
+      const box=el("div","cv-start");
+      box.appendChild(el("div","cv-k","Estimated construction start"));
+      box.appendChild(el("div","cv-big",ms[0]&&ms[0].when||"To be scheduled"));
+      box.appendChild(el("p","cv-note","A step-by-step timeline will be shared as your start gets closer."));
+      card.appendChild(box);
+    }else{
+      card.appendChild(el("div","cv-status", p.started
+        ? (next&&next.state==="now" ? next.label+" is happening now" : "Construction is underway")
+        : "Construction starts "+(next&&next.when?next.when.replace(/^(Early|Mid|Late)/,c=>c.toLowerCase()):"soon")));
+      const ol=el("ol","cv-steps");
+      ms.forEach(m=>{
+        const li=el("li","cv-step "+m.state);
+        li.appendChild(el("span","cv-dot"));
+        li.appendChild(el("div","cv-label",m.label));
+        li.appendChild(el("div","cv-when", m.state==="done"?"Complete":m.state==="now"?"Happening now":m.when));
+        ol.appendChild(li);
+      });
+      card.appendChild(ol);
+    }
+    v.appendChild(card);
   }
-  card.appendChild(el("p","cv-foot","Timing is an estimate. Weather, inspections and deliveries can shift it, "+
+  v.appendChild(el("p","cv-foot","Timing is an estimate. Weather, inspections and deliveries can shift it, "+
     "and we'll confirm exact days as each step gets close."));
-  v.appendChild(card);
+  // on a narrow screen, scroll the chosen pool's bar into view
+  setTimeout(()=>{ const mine=v.querySelector(".cv-row.mine .cv-seg"); if(!mine) return;
+    const sc=mine.closest(".cv-scroll"); sc.scrollLeft=Math.max(0,mine.offsetLeft-40); },0);
   return v;
 }
 document.addEventListener("fullscreenchange",()=>{ if(CUSTOMER) render(); });
